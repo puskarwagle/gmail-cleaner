@@ -85,15 +85,21 @@ the envelopes fed by `reports/latest.json` — run `scan` first, the command
 tells you so if no report exists. The world is an endless office floor:
 straight 3/5-wide corridors, BSP offices, open-plan halls, atriums, doorways
 with wood trim, carpet vs lino floors and ceiling light panels — generated
-lazily from a random seed per session. The status bar shows live fps.
+lazily from a random seed per session. The status bar shows live fps, the
+run timer, and a pickup **streak** counter while you chain envelopes
+(within 3 s of each other).
 
 - Walk into envelopes to queue them. Trash candidates are normal envelopes;
   protected mail (receipts, security, personal, uncertain) is gold with a
-  lock and can never be collected.
-- Press `M` (or the **Map** button) for a bird's-eye view: walls, envelopes
-  across the whole visible range (circle = trashable, gold square = protected)
-  and your heading around your position. Press `B` (or **Big map**) for a
-  fullscreen radius-60 version; `B`/`Esc` closes it.
+  lock and can never be collected. Grabbed envelopes fly toward the
+  crosshair with a short synth blip (pitch rises as the streak grows);
+  protected mail plays a soft chime. Sound can be turned off in settings.
+- The bird's-eye minimap (top right) is always on: walls, envelopes across
+  the whole visible range (circle = trashable, gold square = protected) and
+  your heading. It is **fog-of-war** — tiles and envelopes appear only once
+  you have walked near them. Click/tap the minimap to open the fullscreen
+  radius-60 map with an *explored %* meter and your personal best; click
+  outside it or press `Esc` to close.
 - A compass pill and an on-screen dot point at the nearest uncollected mail
   with its distance, so you always know which way to turn.
 - **Auto-walk** (`Space` or the button) seeks real mail: it paths to the
@@ -101,20 +107,27 @@ lazily from a random seed per session. The status bar shows live fps.
   and ignores a spot for 20 s after getting stuck on it twice instead of
   looping into the same wall.
 - Gathering every trashable message raises an **Inbox clear** overlay with
-  live progress (dismiss with **Keep walking** or go straight to review).
-- **Review queue** opens the typed-`YES` dialog; confirming POSTs the queued
-  IDs to the server, which re-reads `reports/latest.json` and rejects the
-  whole request if any ID is not a trash candidate. Success/failure counts
-  are shown per message.
-- **Undo last** restores the last trash run via the same `runUndo` as the
-  CLI and puts those envelopes back in the maze.
+  run stats — time, distance walked, per-category breakdown, exploration —
+  plus a **personal best** (fastest clear, stored in the browser) and a
+  fanfare. Dismiss with **Keep walking** or press `Esc`, or go straight to
+  review.
+- **Review queue** opens the typed-`YES` dialog listing the whole queue
+  (capped at ~4 rows, scroll for the rest; `Esc` cancels); confirming POSTs
+  the queued IDs to the server, which re-reads `reports/latest.json` and
+  rejects the whole request if any ID is not a trash candidate.
+  Success/failure counts are shown per message.
+- **Undo** lives on the settings page (**Last trash run**): it restores the
+  last trash run via the same `runUndo` as the CLI, so the messages go back
+  to your Inbox (the maze reloads its state when you return to it).
 - The ⚙ button (or `/settings` with the same token) opens the settings page:
   a **Maze UI** tab (field of view, speeds, render quality, envelope density,
-  wall theme, map size/range — applied live, stored in the browser only) and
-  a **Gmail API** tab to upload `credentials.json` or paste the client
-  fields (written locally with mode `0600`), check sign-in status, or revoke
-  the local token. First Gmail access still goes through the Google consent
-  screen on the next `scan`.
+  wall theme, map size/range, sound effects — applied live and **saved
+  automatically** as you change them, stored in the browser only), a
+  **Last trash run** card with the undo button, and a **Gmail API** tab to
+  upload `credentials.json` or paste the client fields (written locally with
+  mode `0600`), check sign-in status, or revoke the local token. `Esc` on the
+  settings page returns to the maze. First Gmail access still goes through
+  the Google consent screen on the next `scan`.
 - The same 24 h stale-report guard applies; only `--force-stale` at server
   start bypasses it, never the browser. `POST /api/trash` additionally
   requires `confirm === "YES"` in the body.
