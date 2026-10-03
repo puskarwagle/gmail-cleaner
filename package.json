@@ -1,0 +1,22 @@
+{
+  "name": "gmail-cleaner",
+  "version": "0.1.0",
+  "description": "Identify automated emails in Gmail Inbox (dry-run first, trash only on explicit command).",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "scan": "bun src/index.ts scan",
+    "report": "bun src/index.ts report",
+    "trash": "bun src/index.ts trash",
+    "undo": "bun src/index.ts undo",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "googleapis": "^164.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}

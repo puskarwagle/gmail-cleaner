@@ -1,0 +1,20 @@
+# Secrets — never commit these
+credentials.json
+client_secret*.json
+token.json
+.env
+.env.*
+
+# Generated reports / audit logs (may contain senders + subjects)
+reports/*.json
+!reports/.gitkeep
+
+# Runtime / OS
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Bun (lockfile IS committed for reproducible installs)
+.bun/
+bun.lockb
