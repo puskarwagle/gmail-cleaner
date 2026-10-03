@@ -36,6 +36,22 @@ dialog p{margin:0 0 12px;line-height:1.5;opacity:.8}
 input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 14px;border:2px solid var(--ac);border-radius:8px;background:transparent;color:inherit;font:16px 'IBM Plex Mono',monospace}
 .row{display:flex;gap:12px;justify-content:flex-end}
 #mm{inset:auto;top:76px;right:12px;width:auto;height:auto;border:1px solid rgba(128,128,128,.4);border-radius:10px;pointer-events:none}
+#cp{display:flex;align-items:center;gap:8px;pointer-events:none}
+#cp.none{opacity:.75}
+#ca{display:inline-block;font-size:16px;color:var(--ac);transition:transform .12s linear}
+#cdot{width:10px;height:10px;border-radius:50%;background:#9fb0bf;display:inline-block}
+#cp.none #cdot{background:transparent;border:1px dashed var(--mut)}
+#st.bump{animation:pop .3s ease}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.12)}100%{transform:scale(1)}}
+#bigwrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(3,6,10,.78);z-index:5}
+#bigwrap[hidden]{display:none}
+#big{position:static;width:min(80vmin,620px);height:min(80vmin,620px);border:1px solid rgba(128,128,128,.5);border-radius:14px}
+.bighint{font-size:12px;color:var(--mut)}
+#finwrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,6,10,.6);z-index:6}
+#finwrap[hidden]{display:none}
+#fin{background:var(--md);color:var(--mi);border-radius:16px;padding:24px;width:min(440px,calc(100% - 32px))}
+#fin h2{margin:0 0 8px;font-size:22px}
+#fin p{margin:0 0 16px;line-height:1.5;opacity:.85}
 
 </style>
 </head>
@@ -43,9 +59,11 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
 <canvas id="cv" aria-label="First-person view of an endless office floor"></canvas>
 <canvas id="mm" width="148" height="148" aria-label="Bird's-eye view of the office floor"></canvas>
 <div id="hud">
-<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="ud" hidden="hidden">Undo last</button><button id="mp" aria-pressed="true" title="Toggle bird's-eye map (M)">Map</button><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
-<div class="r2"><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · demo data</div></div>
+<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="ud" hidden="hidden">Undo last</button><button id="mp" aria-pressed="true" title="Toggle bird's-eye map (M)">Map</button><button id="bg" aria-pressed="false" title="Fullscreen map (B)">Big map</button><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
+<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · demo data</div></div>
 </div>
+<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Big map · <span id="bigst"></span> · press B or Esc to close</div></div>
+<div id="finwrap" hidden="hidden"><div id="fin" role="status"><h2>Inbox clear 🎉</h2><p id="finst"></p><div class="row"><button id="finok">Keep walking</button><button id="finrv" class="pri">Review queue</button></div></div></div>
 <dialog id="dg">
 <h2>Move <span id="dn"></span> messages to Trash?</h2>
 <p>They stay in Gmail Trash for 30 days. Undo brings them back.</p>
@@ -704,6 +722,10 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     return document.getElementById(id);
   }
   var tt;
+  var prevQ = -1;
+  var prevT = -1;
+  var prevK = -1;
+  var bumpT;
   function toast(m) {
     const e = $("ts");
     e.textContent = m;
@@ -711,8 +733,39 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     clearTimeout(tt);
     tt = setTimeout(() => e.classList.remove("on"), 3500);
   }
+  function updateCompass(t) {
+    const cp = document.getElementById("cp");
+    if (!cp)
+      return;
+    const arrow = document.getElementById("ca");
+    const txt = document.getElementById("ct");
+    const dot = document.getElementById("cdot");
+    if (!arrow || !txt || !dot)
+      return;
+    if (!t) {
+      cp.classList.add("none");
+      txt.textContent = "No mail nearby — exploring";
+      arrow.style.transform = "rotate(0deg)";
+      return;
+    }
+    cp.classList.remove("none");
+    arrow.style.transform = "rotate(" + t.rel * 180 / Math.PI + "deg)";
+    dot.style.background = t.color;
+    txt.textContent = t.label + " · " + Math.max(1, Math.round(t.dist)) + "m";
+  }
   function updateHud(s) {
-    $("st").innerHTML = "Queued <b>" + s.queue + "</b> · Trashed <b>" + s.trashed + "</b> · Kept safe <b>" + s.kept + "</b> · " + s.fps + " fps";
+    const st = $("st");
+    st.innerHTML = "Queued <b>" + s.queue + "</b> · Trashed <b>" + s.trashed + "</b> · Kept safe <b>" + s.kept + "</b> · " + s.fps + " fps";
+    if (prevQ >= 0 && (s.queue !== prevQ || s.trashed !== prevT || s.kept !== prevK)) {
+      st.classList.remove("bump");
+      st.offsetWidth;
+      st.classList.add("bump");
+      clearTimeout(bumpT);
+      bumpT = setTimeout(() => st.classList.remove("bump"), 350);
+    }
+    prevQ = s.queue;
+    prevT = s.trashed;
+    prevK = s.kept;
     const rv = $("rv");
     rv.disabled = !s.queue;
     rv.textContent = "Review " + s.queue + " in queue";
@@ -760,6 +813,13 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     const t = tok();
     return t ? { "Content-Type": "application/json", "x-maze-token": t } : { "Content-Type": "application/json" };
   }
+  function nowMs() {
+    try {
+      if (typeof performance !== "undefined" && performance.now)
+        return performance.now();
+    } catch {}
+    return Date.now();
+  }
 
   class Game {
     seed = Math.random() * 1e9 | 0;
@@ -790,6 +850,16 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     SHUFI = 0;
     INCLEAR = false;
     ASG = new Map;
+    fx = [];
+    DONEACK = false;
+    autoKey = null;
+    lastStuckKey = null;
+    stuckCount = 0;
+    blacklist = new Map;
+    huntKey = null;
+    huntX = 0;
+    huntY = 0;
+    guide = null;
     constructor(world) {
       this.world = world;
     }
@@ -844,12 +914,203 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     walkW(wx, wy) {
       return !this.world.wall(Math.floor(wx), Math.floor(wy));
     }
+    nearestMail(maxDist = 70) {
+      const list = this.collectMailTargets(maxDist, 8);
+      if (!list.length)
+        return null;
+      let best = list[0], bs = Infinity;
+      for (const t of list) {
+        let rel = Math.atan2(t.y - this.py, t.x - this.px) - this.ang;
+        rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+        let s = t.dist + 8 * Math.abs(rel) + (t.mail.p ? 8 : 0);
+        if (this.guide && this.guide.key === t.key && !this.done.has(t.key))
+          s -= 4;
+        if (s < bs) {
+          bs = s;
+          best = t;
+        }
+      }
+      return best;
+    }
+    collectMailTargets(maxDist = 65, limit = 8) {
+      const out = [];
+      const psx = Math.floor(this.px / SUPER), psy = Math.floor(this.py / SUPER);
+      const sr = Math.min(3, Math.ceil(maxDist / SUPER) + 1);
+      for (let sy = psy - sr;sy <= psy + sr; sy++)
+        for (let sx = psx - sr;sx <= psx + sr; sx++) {
+          let c;
+          try {
+            c = this.world.getSuper(sx, sy);
+          } catch {
+            continue;
+          }
+          let spots;
+          try {
+            spots = this.world.superSpots(c);
+          } catch {
+            continue;
+          }
+          for (const key of spots) {
+            if (this.done.has(key) || this.kp.has(key))
+              continue;
+            const ci = key.indexOf(",");
+            const tx = +key.slice(0, ci), ty = +key.slice(ci + 1);
+            const dx = tx + 0.5 - this.px, dy = ty + 0.5 - this.py;
+            const dist = Math.hypot(dx, dy);
+            if (dist > maxDist || dist < 0.9)
+              continue;
+            let m;
+            try {
+              m = this.mail(tx, ty);
+            } catch {
+              continue;
+            }
+            if (!m)
+              continue;
+            out.push({ key, x: tx + 0.5, y: ty + 0.5, dist, mail: m });
+          }
+        }
+      out.sort((a, b) => a.dist + (a.mail.p ? 8 : 0) - (b.dist + (b.mail.p ? 8 : 0)));
+      return out.slice(0, limit);
+    }
+    noteStuck() {
+      const k = this.autoKey;
+      if (k && k === this.lastStuckKey)
+        this.stuckCount++;
+      else {
+        this.stuckCount = 1;
+        this.lastStuckKey = k;
+      }
+      if (k && this.stuckCount >= 2) {
+        this.blacklist.set(k, nowMs() + 20000);
+        this.stuckCount = 0;
+      }
+      this.path = null;
+      this.planAuto();
+      this.stuckT = 0;
+      this.stuckX = this.px;
+      this.stuckY = this.py;
+    }
+    validateHunt() {
+      const hk = this.huntKey;
+      if (!hk || this.done.has(hk) || this.kp.has(hk)) {
+        this.huntKey = null;
+        return null;
+      }
+      const exp = this.blacklist.get(hk);
+      if (exp !== undefined && exp > nowMs()) {
+        this.huntKey = null;
+        return null;
+      }
+      const dx = this.huntX - this.px, dy = this.huntY - this.py, dist = Math.hypot(dx, dy);
+      if (dist > 12 || dist < 0.5) {
+        if (dist > 12)
+          this.huntKey = null;
+        return null;
+      }
+      try {
+        if (!losClear((x, y) => this.walkW(x, y), this.px, this.py, this.huntX, this.huntY)) {
+          this.huntKey = null;
+          return null;
+        }
+      } catch {
+        return null;
+      }
+      const ci = hk.indexOf(","), tx = +hk.slice(0, ci), ty = +hk.slice(ci + 1);
+      let m = null;
+      try {
+        m = this.mail(tx, ty);
+      } catch {
+        return null;
+      }
+      if (!m) {
+        this.huntKey = null;
+        return null;
+      }
+      return { key: hk, x: this.huntX, y: this.huntY, dist, mail: m };
+    }
+    directMail(maxDist = 9) {
+      let cands;
+      try {
+        cands = this.collectMailTargets(maxDist, 3);
+      } catch {
+        return null;
+      }
+      const now = nowMs();
+      for (const c of cands) {
+        const exp = this.blacklist.get(c.key);
+        if (exp !== undefined && exp > now)
+          continue;
+        try {
+          if (losClear((x, y) => this.walkW(x, y), this.px, this.py, c.x, c.y))
+            return c;
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    }
+    progress() {
+      if (!this.MSGS || !this.MSGS.length)
+        return { total: null, trashTotal: null, gathered: 0, kept: this.KP, done: false };
+      const total = this.MSGS.length;
+      let trashTotal = 0;
+      for (const m of this.MSGS)
+        if (m.trashCandidate)
+          trashTotal++;
+      const gathered = this.Q.length + this.T;
+      const done = trashTotal > 0 ? gathered >= trashTotal : this.KP >= total;
+      return { total, trashTotal, gathered, kept: this.KP, done };
+    }
+    pushFx(label, color, prot) {
+      this.fx.push({ t0: nowMs(), label, color, prot });
+      if (this.fx.length > 6)
+        this.fx.splice(0, this.fx.length - 6);
+    }
     hit(x, y, r) {
       return this.world.wall(Math.floor(x - r), Math.floor(y - r)) || this.world.wall(Math.floor(x + r), Math.floor(y - r)) || this.world.wall(Math.floor(x - r), Math.floor(y + r)) || this.world.wall(Math.floor(x + r), Math.floor(y + r));
     }
     planAuto() {
       const PW = 128, x0 = Math.floor(this.px) - 64, y0 = Math.floor(this.py) - 64;
       const walk = (x, y) => !this.world.wall(x0 + x, y0 + y);
+      const now = nowMs();
+      for (const [k, exp] of this.blacklist)
+        if (exp <= now)
+          this.blacklist.delete(k);
+      const tryTarget = (wx, wy, key) => {
+        const gx2 = Math.floor(wx) - x0, gy2 = Math.floor(wy) - y0;
+        if (gx2 < 1 || gy2 < 1 || gx2 >= PW - 1 || gy2 >= PW - 1)
+          return false;
+        const sxc2 = Math.floor(this.px) - x0, syc2 = Math.floor(this.py) - y0;
+        let p2 = astar(PW, PW, walk, sxc2, syc2, gx2, gy2);
+        if (!p2 || !p2.length)
+          return false;
+        const world2 = this;
+        p2 = p2.map((q) => [x0 + q[0] + 0.5, y0 + q[1] + 0.5]);
+        p2 = pull((x, y) => world2.walkW(x, y), p2) || p2;
+        this.path = p2;
+        this.followI = 0;
+        this.stuckT = 0;
+        this.stuckX = this.px;
+        this.stuckY = this.py;
+        this.autoKey = key;
+        this.recentT.push([wx, wy]);
+        if (this.recentT.length > 5)
+          this.recentT.shift();
+        return true;
+      };
+      try {
+        const mails = this.collectMailTargets(65, 4);
+        for (const m of mails) {
+          if (m.dist < 0.5)
+            continue;
+          const exp = this.blacklist.get(m.key);
+          if (exp !== undefined && exp > now)
+            continue;
+          if (tryTarget(m.x, m.y, m.key))
+            return;
+        }
+      } catch {}
       const cand = [];
       const psx = Math.floor(this.px / SUPER), psy = Math.floor(this.py / SUPER);
       for (let sy = psy - 2;sy <= psy + 2; sy++)
@@ -912,6 +1173,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       this.stuckT = 0;
       this.stuckX = this.px;
       this.stuckY = this.py;
+      this.autoKey = null;
       this.recentT.push(tgt);
       if (this.recentT.length > 5)
         this.recentT.shift();
@@ -924,8 +1186,12 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       if (on) {
         this.path = null;
         this.planAuto();
-      } else
+      } else {
         this.path = null;
+        this.autoKey = null;
+        this.huntKey = null;
+        this.stuckT = 0;
+      }
     }
     async loadReport() {
       try {
@@ -945,9 +1211,11 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
           this.SHUF[k] = tmp;
         }
         this.SHUFI = 0;
+        this.DONEACK = false;
+        this.fx.length = 0;
         const ht = document.querySelector(".ht");
         if (ht)
-          ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · live inbox data";
+          ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · live inbox data";
         if (!msgs.length)
           toast("Report is empty — the maze stays walkable. Run scan again for fresh data.");
         else
@@ -965,37 +1233,68 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       if (this.aw && (f || tr))
         this.setAuto(false);
       if (this.aw) {
-        if (!this.path || this.followI >= this.path.length) {
-          if (performance.now() > this.planCoolUntil)
-            this.planAuto();
+        let direct = this.validateHunt();
+        if (!direct) {
+          direct = this.directMail(9);
+          if (direct) {
+            this.huntKey = direct.key;
+            this.huntX = direct.x;
+            this.huntY = direct.y;
+          }
         }
-        if (this.path && this.followI < this.path.length) {
-          const last = this.path[this.path.length - 1];
-          if (Math.hypot(last[0] - this.px, last[1] - this.py) < 1.2)
-            this.planAuto();
-        }
-        if (this.path && this.followI < this.path.length) {
-          while (this.followI < this.path.length - 1 && Math.hypot(this.path[this.followI][0] - this.px, this.path[this.followI][1] - this.py) < 0.9)
-            this.followI++;
-          let li = this.followI;
-          while (li < this.path.length - 1 && Math.hypot(this.path[li][0] - this.px, this.path[li][1] - this.py) < 2.4)
-            li++;
-          const des = Math.atan2(this.path[li][1] - this.py, this.path[li][0] - this.px);
+        if (direct) {
+          this.path = null;
+          this.autoKey = direct.key;
+          const des = Math.atan2(direct.y - this.py, direct.x - this.px);
           let da = des - this.ang;
           da = Math.atan2(Math.sin(da), Math.cos(da));
-          const mt = 3.2 * dt;
+          const mt = 4.5 * dt;
           this.ang += Math.max(-mt, Math.min(mt, da));
-          f = +SET.auto || 0.85;
+          const align = Math.abs(da);
+          const auto = +SET.auto || 0.85;
+          f = align > 1.1 ? 0 : auto * (1 - align / 1.1) * Math.max(0.3, Math.min(1, direct.dist / 3));
           this.stuckT += dt;
           if (this.stuckT > 2.5) {
             if (Math.hypot(this.px - this.stuckX, this.py - this.stuckY) < 0.5)
-              this.planAuto();
+              this.noteStuck();
             this.stuckT = 0;
             this.stuckX = this.px;
             this.stuckY = this.py;
           }
-        } else
-          f = 0.2;
+        } else {
+          if (!this.path || this.followI >= this.path.length) {
+            if (performance.now() > this.planCoolUntil)
+              this.planAuto();
+          }
+          if (this.path && this.followI < this.path.length) {
+            const last = this.path[this.path.length - 1];
+            if (Math.hypot(last[0] - this.px, last[1] - this.py) < 1.2)
+              this.planAuto();
+          }
+          if (this.path && this.followI < this.path.length) {
+            while (this.followI < this.path.length - 1 && Math.hypot(this.path[this.followI][0] - this.px, this.path[this.followI][1] - this.py) < 0.9)
+              this.followI++;
+            let li = this.followI;
+            while (li < this.path.length - 1 && Math.hypot(this.path[li][0] - this.px, this.path[li][1] - this.py) < 2.4)
+              li++;
+            const des = Math.atan2(this.path[li][1] - this.py, this.path[li][0] - this.px);
+            let da = des - this.ang;
+            da = Math.atan2(Math.sin(da), Math.cos(da));
+            const mt = 4 * dt;
+            this.ang += Math.max(-mt, Math.min(mt, da));
+            const align = Math.abs(da);
+            f = align > 1.2 ? 0 : (+SET.auto || 0.85) * (1 - align / 1.2);
+            this.stuckT += dt;
+            if (this.stuckT > 2.5) {
+              if (Math.hypot(this.px - this.stuckX, this.py - this.stuckY) < 0.5)
+                this.noteStuck();
+              this.stuckT = 0;
+              this.stuckX = this.px;
+              this.stuckY = this.py;
+            }
+          } else
+            f = 0.2;
+        }
       }
       f = Math.max(-1, Math.min(1, f));
       tr = Math.max(-1, Math.min(1, tr));
@@ -1023,6 +1322,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
             if (!this.kp.has(key)) {
               this.kp.add(key);
               this.KP++;
+              this.pushFx("Kept safe", "#e9c46a", true);
               toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
               onHud();
             }
@@ -1030,6 +1330,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
             this.done.add(key);
             m.key = key;
             this.Q.push(m);
+            this.pushFx("Queued", m.c || "#fff", false);
             toast("Queued: " + m.from + " · " + m.sub);
             onHud();
           }
@@ -1243,6 +1544,94 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     L.sort((a, b) => b[0] - a[0]);
     for (const e of L)
       drawEnvelope(g, e[1], e[2], Hh / 2 + Math.sin(t * 2 + e[4] * 3 + e[5]) * e[3] * 0.1 + e[3] * 0.2, e[3], Math.max(0.2, 1 - e[0] / 45), t);
+    drawGuide(g, W, Hh, game);
+    drawFx(g, W, Hh, game, t * 1000);
+  }
+  function drawGuide(g, W, Hh, game) {
+    const tgt = game.guide;
+    if (!tgt || game.done.has(tgt.key))
+      return;
+    const dx = tgt.x - game.px, dy = tgt.y - game.py, dist = Math.hypot(dx, dy);
+    if (dist > 75)
+      return;
+    const dx0 = Math.cos(game.ang), dy0 = Math.sin(game.ang), fov = Math.max(0.55, Math.min(1, 0.55 * W / Hh)) * (+SET.fov || 1), plx = -dy0 * fov, ply = dx0 * fov, inv = 1 / (plx * dy0 - dx0 * ply);
+    const tx = inv * (dy0 * dx - dx0 * dy), ty = inv * (-ply * dx + plx * dy);
+    const behind = ty < 0.5;
+    let X = behind ? tx >= 0 ? W - 30 : 30 : W / 2 * (1 + tx / ty);
+    X = Math.max(24, Math.min(W - 24, X));
+    const Y = Hh * 0.4, col = tgt.mail.p ? "#e9c46a" : tgt.mail.c || "#fff", r = Math.max(7, Math.min(11, W * 0.014));
+    g.save();
+    g.globalAlpha = 0.95;
+    g.fillStyle = "rgba(5,8,12,.72)";
+    g.beginPath();
+    g.arc(X, Y, r + 4, 0, 6.3);
+    g.fill();
+    g.fillStyle = col;
+    g.beginPath();
+    g.arc(X, Y, r, 0, 6.3);
+    g.fill();
+    g.strokeStyle = "rgba(255,255,255,.9)";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(X, Y, r + 4, 0, 6.3);
+    g.stroke();
+    if (behind) {
+      const s = tx >= 0 ? 1 : -1;
+      g.fillStyle = "rgba(238,242,245,.9)";
+      g.beginPath();
+      g.moveTo(X + s * (r + 12), Y);
+      g.lineTo(X + s * (r + 4), Y - 6);
+      g.lineTo(X + s * (r + 4), Y + 6);
+      g.closePath();
+      g.fill();
+    }
+    g.fillStyle = "#eef2f5";
+    g.font = "500 " + Math.max(11, Math.min(15, Hh * 0.024)) + "px 'IBM Plex Sans',system-ui,sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "top";
+    g.fillText(Math.max(1, Math.round(dist)) + "m", X, Y + r + 6);
+    g.restore();
+  }
+  function drawFx(g, W, Hh, game, nowMs2) {
+    if (!game.fx.length)
+      return;
+    game.fx = game.fx.filter((f) => nowMs2 - f.t0 < 1300);
+    g.save();
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    const cx = W / 2;
+    game.fx.forEach((f, idx) => {
+      const age = nowMs2 - f.t0;
+      const k = age / 1300;
+      const rise = age * 0.045;
+      const y = Hh * 0.6 - rise - idx * Math.max(18, Hh * 0.045);
+      const pop = age < 160 ? 1 + (1 - age / 160) * 0.35 : 1;
+      const alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+      const fs = Math.max(13, Math.min(22, Hh * 0.032)) * pop;
+      g.globalAlpha = Math.max(0, Math.min(1, alpha));
+      g.font = "600 " + fs + "px 'IBM Plex Sans',system-ui,sans-serif";
+      const label = (f.prot ? "Kept safe " : "+1 ") + f.label;
+      const w = g.measureText(label).width + 28;
+      const h = fs + 16;
+      g.fillStyle = "rgba(5,8,12,.82)";
+      g.beginPath();
+      const bx = cx - w / 2, by = y - h / 2;
+      const r = h / 2;
+      g.moveTo(bx + r, by);
+      g.arcTo(bx + w, by, bx + w, by + h, r);
+      g.arcTo(bx + w, by + h, bx, by + h, r);
+      g.arcTo(bx, by + h, bx, by, r);
+      g.arcTo(bx, by, bx + w, by, r);
+      g.closePath();
+      g.fill();
+      g.fillStyle = f.color;
+      g.beginPath();
+      g.arc(bx + 14, y, fs * 0.32, 0, 6.3);
+      g.fill();
+      g.fillStyle = "#eef2f5";
+      g.fillText(label, cx + 8, y + 1);
+    });
+    g.restore();
   }
   function drawMap(mx, mm, game, world) {
     if (!SET.minimap) {
@@ -1253,8 +1642,18 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     const S = Math.max(96, Math.min(260, +SET.mapSize || 148));
     if (mm.width !== S)
       mm.width = mm.height = S;
-    const R = Math.max(8, Math.min(40, +SET.mapRange || 24)), n = 2 * R + 1, s = S / n, ptx = Math.floor(game.px), pty = Math.floor(game.py);
-    mx.fillStyle = "rgba(5,8,12,.9)";
+    const R = Math.max(8, Math.min(40, +SET.mapRange || 24));
+    drawMapInto(mx, game, world, R, S);
+  }
+  function drawBigMap(mx, big, game, world) {
+    const S = Math.max(280, Math.min(620, Math.min(innerWidth, innerHeight) - 40));
+    if (big.width !== S)
+      big.width = big.height = S;
+    drawMapInto(mx, game, world, 60, S);
+  }
+  function drawMapInto(mx, game, world, R, S) {
+    const n = 2 * R + 1, s = S / n, ptx = Math.floor(game.px), pty = Math.floor(game.py);
+    mx.fillStyle = "rgba(5,8,12,.94)";
     mx.fillRect(0, 0, S, S);
     for (let j = -R;j <= R; j++)
       for (let i = -R;i <= R; i++) {
@@ -1265,19 +1664,27 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
           mx.fillRect((i + R) * s, (j + R) * s, s + 0.5, s + 0.5);
         }
       }
-    const cr = Math.min(R, 14);
-    for (let j = -cr;j <= cr; j++)
-      for (let i = -cr;i <= cr; i++) {
+    for (let j = -R;j <= R; j++)
+      for (let i = -R;i <= R; i++) {
         const cx = ptx + i, cy = pty + j, m = game.mail(cx, cy);
         if (!m || game.done.has(cx + "," + cy))
           continue;
-        const X = (i + cr) * s + s / 2 + (R - cr) * s, Y = (j + cr) * s + s / 2 + (R - cr) * s;
+        const X = (i + R) * s + s / 2, Y = (j + R) * s + s / 2;
         if (X < 0 || Y < 0 || X > S || Y > S)
           continue;
+        const r = Math.max(2, s * 0.42);
         mx.fillStyle = m.p ? "#e9c46a" : m.c || "#fff";
-        mx.beginPath();
-        mx.arc(X, Y, Math.max(1.5, s * 0.32), 0, 6.3);
-        mx.fill();
+        mx.strokeStyle = "rgba(255,255,255,.85)";
+        mx.lineWidth = Math.max(1, s * 0.08);
+        if (m.p) {
+          mx.fillRect(X - r * 0.8, Y - r * 0.8, r * 1.6, r * 1.6);
+          mx.strokeRect(X - r * 0.8, Y - r * 0.8, r * 1.6, r * 1.6);
+        } else {
+          mx.beginPath();
+          mx.arc(X, Y, r, 0, 6.3);
+          mx.fill();
+          mx.stroke();
+        }
       }
     mx.save();
     mx.translate(S / 2, S / 2);
@@ -1326,6 +1733,33 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
   fit();
   function hud() {
     updateHud({ queue: game.Q.length, trashed: game.T, kept: game.KP, fps, canUndo: game.LB.length > 0 });
+    checkDone();
+  }
+  function checkDone() {
+    const wrap = document.getElementById("finwrap");
+    if (!wrap)
+      return;
+    let p;
+    try {
+      p = game.progress();
+    } catch {
+      return;
+    }
+    if (p.done && p.total && !game.DONEACK) {
+      const st = document.getElementById("finst");
+      if (st)
+        st.textContent = "Gathered " + p.gathered + " of " + (p.trashTotal ?? p.total) + " disposable messages" + (p.kept ? " · " + p.kept + " protected kept safe" : "") + ". Review the queue to move them to Trash, or keep walking.";
+      wrap.hidden = false;
+    } else if (game.DONEACK || !p.done) {
+      if (!p.done)
+        game.DONEACK = false;
+      wrap.hidden = true;
+    }
+  }
+  function hideFin() {
+    const wrap = document.getElementById("finwrap");
+    if (wrap)
+      wrap.hidden = true;
   }
   function setMap(on) {
     SET.minimap = !!on;
@@ -1343,6 +1777,30 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       setTheme(SET.theme | 0);
       drawMap(mx, mm, game, world);
     }
+  });
+  var bigwrap = $2("bigwrap");
+  var big = $2("big");
+  var bigx = big.getContext("2d");
+  function setBig(on) {
+    bigwrap.hidden = !on;
+    $2("bg").setAttribute("aria-pressed", on ? "true" : "false");
+    if (on) {
+      try {
+        drawBigMap(bigx, big, game, world);
+      } catch {}
+      const st = document.getElementById("bigst");
+      if (st) {
+        try {
+          const p = game.progress();
+          st.textContent = p.total == null ? "demo maze" : "gathered " + p.gathered + " / " + (p.trashTotal ?? p.total);
+        } catch {}
+      }
+    }
+  }
+  $2("bg").onclick = () => setBig(bigwrap.hidden);
+  bigwrap.addEventListener("click", (e) => {
+    if (e.target === bigwrap)
+      setBig(false);
   });
   function twoFinger(e) {
     if (e.ctrlKey || e.metaKey || e.deltaMode !== 0)
@@ -1372,6 +1830,14 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     }
     if (k == "m") {
       setMap(!SET.minimap);
+      return;
+    }
+    if (k == "b") {
+      setBig(bigwrap.hidden);
+      return;
+    }
+    if (k == "escape" && !bigwrap.hidden) {
+      setBig(false);
       return;
     }
     game.keys[k] = 1;
@@ -1407,21 +1873,49 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     if (ms - mmT > 120) {
       mmT = ms;
       drawMap(mx, mm, game, world);
+      try {
+        const near = game.nearestMail(70);
+        game.guide = near;
+        if (!near) {
+          updateCompass(null);
+        } else {
+          let rel = Math.atan2(near.y - game.py, near.x - game.px) - game.ang;
+          rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+          updateCompass({
+            rel,
+            dist: near.dist,
+            color: near.mail.p ? "#e9c46a" : near.mail.c || "#fff",
+            label: (near.mail.p ? "protected" : near.mail.cat) + " " + near.mail.from
+          });
+        }
+      } catch {}
+      if (!bigwrap.hidden) {
+        try {
+          drawBigMap(bigx, big, game, world);
+        } catch {}
+      }
     }
     requestAnimationFrame(frame);
   }
   var dg = $2("dg");
   var yes = $2("yes");
   var go = $2("go");
-  $2("rv").onclick = () => {
+  function openReview() {
     if (!game.Q.length)
       return;
+    hideFin();
     $2("dn").textContent = String(game.Q.length);
     $2("dl").innerHTML = game.Q.slice(-4).map((m) => '<div><span class="mo">' + m.from + "</span>" + m.sub + "</div>").join("") + (game.Q.length > 4 ? "<div>and " + (game.Q.length - 4) + " more</div>" : "");
     yes.value = "";
     go.disabled = true;
     dg.showModal();
     yes.focus();
+  }
+  $2("rv").onclick = openReview;
+  $2("finrv").onclick = openReview;
+  $2("finok").onclick = () => {
+    game.DONEACK = true;
+    hideFin();
   };
   yes.oninput = () => {
     go.disabled = yes.value != "YES";

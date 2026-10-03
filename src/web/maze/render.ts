@@ -284,10 +284,120 @@ export function draw(
   L.sort((a, b) => b[0] - a[0]);
   for (const e of L)
     drawEnvelope(g, e[1], e[2], Hh / 2 + Math.sin(t * 2 + e[4] * 3 + e[5]) * e[3] * 0.1 + e[3] * 0.2, e[3], Math.max(0.2, 1 - e[0] / 45), t);
+  drawGuide(g, W, Hh, game);
+  drawFx(g, W, Hh, game, t * 1000);
 }
 
+// Follow-the-dot guide: projects the nearest mail's bearing onto the screen
+// (same camera convention as the envelope projection, no wall awareness).
+// Turn until the marker sits mid-screen, walk straight, reach mail.
+// Behind you it clamps to the screen edge on the correct turn side.
+function drawGuide(g: CanvasRenderingContext2D, W: number, Hh: number, game: Game): void {
+  const tgt = game.guide;
+  if (!tgt || game.done.has(tgt.key)) return;
+  const dx = tgt.x - game.px,
+    dy = tgt.y - game.py,
+    dist = Math.hypot(dx, dy);
+  if (dist > 75) return;
+  const dx0 = Math.cos(game.ang),
+    dy0 = Math.sin(game.ang),
+    fov = Math.max(0.55, Math.min(1, (0.55 * W) / Hh)) * (+SET.fov || 1),
+    plx = -dy0 * fov,
+    ply = dx0 * fov,
+    inv = 1 / (plx * dy0 - dx0 * ply);
+  const tx = inv * (dy0 * dx - dx0 * dy),
+    ty = inv * (-ply * dx + plx * dy);
+  const behind = ty < 0.5;
+  let X = behind ? (tx >= 0 ? W - 30 : 30) : (W / 2) * (1 + tx / ty);
+  X = Math.max(24, Math.min(W - 24, X));
+  const Y = Hh * 0.4,
+    col = tgt.mail.p ? "#e9c46a" : tgt.mail.c || "#fff",
+    r = Math.max(7, Math.min(11, W * 0.014));
+  g.save();
+  g.globalAlpha = 0.95;
+  g.fillStyle = "rgba(5,8,12,.72)";
+  g.beginPath();
+  g.arc(X, Y, r + 4, 0, 6.3);
+  g.fill();
+  g.fillStyle = col;
+  g.beginPath();
+  g.arc(X, Y, r, 0, 6.3);
+  g.fill();
+  g.strokeStyle = "rgba(255,255,255,.9)";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.arc(X, Y, r + 4, 0, 6.3);
+  g.stroke();
+  if (behind) {
+    // Edge chevron: which way to turn.
+    const s = tx >= 0 ? 1 : -1;
+    g.fillStyle = "rgba(238,242,245,.9)";
+    g.beginPath();
+    g.moveTo(X + s * (r + 12), Y);
+    g.lineTo(X + s * (r + 4), Y - 6);
+    g.lineTo(X + s * (r + 4), Y + 6);
+    g.closePath();
+    g.fill();
+  }
+  g.fillStyle = "#eef2f5";
+  g.font = "500 " + Math.max(11, Math.min(15, Hh * 0.024)) + "px 'IBM Plex Sans',system-ui,sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "top";
+  g.fillText(Math.max(1, Math.round(dist)) + "m", X, Y + r + 6);
+  g.restore();
+}
+
+// Floating pickup pops: "+1 Queued" pills that rise and fade near the
+// crosshair for ~1.2 s after each envelope pickup (game.fx, capped at 6).
+export function drawFx(
+  g: CanvasRenderingContext2D,
+  W: number,
+  Hh: number,
+  game: Game,
+  nowMs: number,
+): void {
+  if (!game.fx.length) return;
+  game.fx = game.fx.filter((f) => nowMs - f.t0 < 1300);
+  g.save();
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const cx = W / 2;
+  game.fx.forEach((f, idx) => {
+    const age = nowMs - f.t0;
+    const k = age / 1300;
+    const rise = age * 0.045;
+    const y = Hh * 0.6 - rise - idx * Math.max(18, Hh * 0.045);
+    const pop = age < 160 ? 1 + (1 - age / 160) * 0.35 : 1;
+    const alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+    const fs = Math.max(13, Math.min(22, Hh * 0.032)) * pop;
+    g.globalAlpha = Math.max(0, Math.min(1, alpha));
+    g.font = "600 " + fs + "px 'IBM Plex Sans',system-ui,sans-serif";
+    const label = (f.prot ? "Kept safe " : "+1 ") + f.label;
+    const w = g.measureText(label).width + 28;
+    const h = fs + 16;
+    g.fillStyle = "rgba(5,8,12,.82)";
+    g.beginPath();
+    const bx = cx - w / 2,
+      by = y - h / 2;
+    const r = h / 2;
+    g.moveTo(bx + r, by);
+    g.arcTo(bx + w, by, bx + w, by + h, r);
+    g.arcTo(bx + w, by + h, bx, by + h, r);
+    g.arcTo(bx, by + h, bx, by, r);
+    g.arcTo(bx, by, bx + w, by, r);
+    g.closePath();
+    g.fill();
+    g.fillStyle = f.color;
+    g.beginPath();
+    g.arc(bx + 14, y, fs * 0.32, 0, 6.3);
+    g.fill();
+    g.fillStyle = "#eef2f5";
+    g.fillText(label, cx + 8, y + 1);
+  });
+  g.restore();
+}
 // Bird's-eye view: overhead tiles around the player (walls dim, door frames
-// wood, mail as dots, gold = protected) plus a heading arrow. ~8 Hz.
+// wood, mail as dots, gold squares = protected) plus a heading arrow. ~8 Hz.
 export function drawMap(
   mx: CanvasRenderingContext2D,
   mm: HTMLCanvasElement,
@@ -301,12 +411,34 @@ export function drawMap(
   mm.style.display = "block";
   const S = Math.max(96, Math.min(260, +SET.mapSize || 148));
   if (mm.width !== S) mm.width = mm.height = S;
-  const R = Math.max(8, Math.min(40, +SET.mapRange || 24)),
-    n = 2 * R + 1,
+  const R = Math.max(8, Math.min(40, +SET.mapRange || 24));
+  drawMapInto(mx, game, world, R, S);
+}
+
+/** Fullscreen tactical map (B key): wide radius, same symbology, scaled up. */
+export function drawBigMap(
+  mx: CanvasRenderingContext2D,
+  big: HTMLCanvasElement,
+  game: Game,
+  world: World,
+): void {
+  const S = Math.max(280, Math.min(620, Math.min(innerWidth, innerHeight) - 40));
+  if (big.width !== S) big.width = big.height = S;
+  drawMapInto(mx, game, world, 60, S);
+}
+
+function drawMapInto(
+  mx: CanvasRenderingContext2D,
+  game: Game,
+  world: World,
+  R: number,
+  S: number,
+): void {
+  const n = 2 * R + 1,
     s = S / n,
     ptx = Math.floor(game.px),
     pty = Math.floor(game.py);
-  mx.fillStyle = "rgba(5,8,12,.9)";
+  mx.fillStyle = "rgba(5,8,12,.94)";
   mx.fillRect(0, 0, S, S);
   for (let j = -R; j <= R; j++)
     for (let i = -R; i <= R; i++) {
@@ -321,20 +453,31 @@ export function drawMap(
         mx.fillRect((i + R) * s, (j + R) * s, s + 0.5, s + 0.5);
       }
     }
-  const cr = Math.min(R, 14);
-  for (let j = -cr; j <= cr; j++)
-    for (let i = -cr; i <= cr; i++) {
+  // Mail across the whole visible range (was radius 14): trashable = circle
+  // in category color, protected = gold square. White edge keeps dots legible
+  // on dark tiles at small sizes.
+  for (let j = -R; j <= R; j++)
+    for (let i = -R; i <= R; i++) {
       const cx = ptx + i,
         cy = pty + j,
         m = game.mail(cx, cy);
       if (!m || game.done.has(cx + "," + cy)) continue;
-      const X = (i + cr) * s + s / 2 + (R - cr) * s,
-        Y = (j + cr) * s + s / 2 + (R - cr) * s;
+      const X = (i + R) * s + s / 2,
+        Y = (j + R) * s + s / 2;
       if (X < 0 || Y < 0 || X > S || Y > S) continue;
+      const r = Math.max(2, s * 0.42);
       mx.fillStyle = m.p ? "#e9c46a" : m.c || "#fff";
-      mx.beginPath();
-      mx.arc(X, Y, Math.max(1.5, s * 0.32), 0, 6.3);
-      mx.fill();
+      mx.strokeStyle = "rgba(255,255,255,.85)";
+      mx.lineWidth = Math.max(1, s * 0.08);
+      if (m.p) {
+        mx.fillRect(X - r * 0.8, Y - r * 0.8, r * 1.6, r * 1.6);
+        mx.strokeRect(X - r * 0.8, Y - r * 0.8, r * 1.6, r * 1.6);
+      } else {
+        mx.beginPath();
+        mx.arc(X, Y, r, 0, 6.3);
+        mx.fill();
+        mx.stroke();
+      }
     }
   mx.save();
   mx.translate(S / 2, S / 2);

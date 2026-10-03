@@ -7,8 +7,8 @@ import { SET, SKEY, applySettingsObject, loadSettings, saveSET } from "./setting
 import { setTheme } from "./textures.ts";
 import { World } from "./world.ts";
 import { Game, hdrs, tok } from "./game.ts";
-import { toast, updateHud } from "./hud.ts";
-import { draw, drawMap, type FrameBuffers } from "./render.ts";
+import { toast, updateCompass, updateHud } from "./hud.ts";
+import { draw, drawBigMap, drawMap, type FrameBuffers } from "./render.ts";
 
 function $(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
@@ -49,6 +49,35 @@ fit();
 
 function hud(): void {
   updateHud({ queue: game.Q.length, trashed: game.T, kept: game.KP, fps, canUndo: game.LB.length > 0 });
+  checkDone();
+}
+
+/** Inbox-clear overlay: shows once per report when all trashable mail is gathered. */
+function checkDone(): void {
+  const wrap = document.getElementById("finwrap");
+  if (!wrap) return;
+  let p;
+  try {
+    p = game.progress();
+  } catch {
+    return;
+  }
+  if (p.done && p.total && !game.DONEACK) {    const st = document.getElementById("finst");
+    if (st)
+      st.textContent =
+        "Gathered " + p.gathered + " of " + (p.trashTotal ?? p.total) + " disposable messages" +
+        (p.kept ? " · " + p.kept + " protected kept safe" : "") +
+        ". Review the queue to move them to Trash, or keep walking.";
+    wrap.hidden = false;
+  } else if (game.DONEACK || !p.done) {
+    if (!p.done) game.DONEACK = false;
+    wrap.hidden = true;
+  }
+}
+
+function hideFin(): void {
+  const wrap = document.getElementById("finwrap");
+  if (wrap) wrap.hidden = true;
 }
 
 function setMap(on: boolean): void {
@@ -69,6 +98,36 @@ addEventListener("storage", (e: StorageEvent) => {
     setTheme(SET.theme | 0);
     drawMap(mx, mm, game, world);
   }
+});
+
+const bigwrap = $("bigwrap") as HTMLElement;
+const big = $("big") as HTMLCanvasElement;
+const bigx = big.getContext("2d") as CanvasRenderingContext2D;
+
+function setBig(on: boolean): void {
+  bigwrap.hidden = !on;
+  ($("bg") as HTMLButtonElement).setAttribute("aria-pressed", on ? "true" : "false");
+  if (on) {
+    try {
+      drawBigMap(bigx, big, game, world);
+    } catch {
+      // world gen is lazy; next frame retries
+    }
+    const st = document.getElementById("bigst");
+    if (st) {
+      try {
+        const p = game.progress();
+        st.textContent =
+          p.total == null ? "demo maze" : "gathered " + p.gathered + " / " + (p.trashTotal ?? p.total);
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+($("bg") as HTMLButtonElement).onclick = () => setBig(bigwrap.hidden);
+bigwrap.addEventListener("click", (e) => {
+  if (e.target === bigwrap) setBig(false);
 });
 
 // Trackpad, two fingers only: horizontal swipe turns. Ignores pinch-zoom,
@@ -105,6 +164,14 @@ addEventListener("keydown", (e: KeyboardEvent) => {
     setMap(!SET.minimap);
     return;
   }
+  if (k == "b") {
+    setBig(bigwrap.hidden);
+    return;
+  }
+  if (k == "escape" && !bigwrap.hidden) {
+    setBig(false);
+    return;
+  }
   game.keys[k] = 1;
   if (k.startsWith("arrow")) e.preventDefault();
 });
@@ -139,6 +206,32 @@ function frame(ms: number): void {
   if (ms - mmT > 120) {
     mmT = ms;
     drawMap(mx, mm, game, world);
+    // Compass + big map refresh at the same ~8 Hz throttle (cheap spot scan).
+    try {
+      const near = game.nearestMail(70);
+      game.guide = near;
+      if (!near) {
+        updateCompass(null);
+      } else {
+        let rel = Math.atan2(near.y - game.py, near.x - game.px) - game.ang;
+        rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+        updateCompass({
+          rel,
+          dist: near.dist,
+          color: near.mail.p ? "#e9c46a" : near.mail.c || "#fff",
+          label: (near.mail.p ? "protected" : near.mail.cat) + " " + near.mail.from,
+        });
+      }
+    } catch {
+      // ignore compass errors; maze stays walkable
+    }
+    if (!bigwrap.hidden) {
+      try {
+        drawBigMap(bigx, big, game, world);
+      } catch {
+        // retry next tick
+      }
+    }
   }
   requestAnimationFrame(frame);
 }
@@ -146,8 +239,9 @@ function frame(ms: number): void {
 const dg = $("dg") as HTMLDialogElement,
   yes = $("yes") as HTMLInputElement,
   go = $("go") as HTMLButtonElement;
-($("rv") as HTMLButtonElement).onclick = () => {
+function openReview(): void {
   if (!game.Q.length) return;
+  hideFin();
   $("dn").textContent = String(game.Q.length);
   $("dl").innerHTML =
     game.Q.slice(-4)
@@ -157,6 +251,12 @@ const dg = $("dg") as HTMLDialogElement,
   go.disabled = true;
   dg.showModal();
   yes.focus();
+}
+($("rv") as HTMLButtonElement).onclick = openReview;
+($("finrv") as HTMLButtonElement).onclick = openReview;
+($("finok") as HTMLButtonElement).onclick = () => {
+  game.DONEACK = true;
+  hideFin();
 };
 yes.oninput = () => {
   go.disabled = yes.value != "YES";
