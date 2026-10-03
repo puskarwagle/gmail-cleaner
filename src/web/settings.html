@@ -58,7 +58,6 @@ button.danger{background:transparent;border:1px solid #e0605f;color:#e0605f;bord
 <label><b>Render quality</b><select id="s-quality"><option value="0.5">0.5× — fastest</option><option value="0.75">0.75×</option><option value="1">1× — sharpest</option></select></label>
 <label><b>Envelope density</b> <span class="v" id="v-density"></span><input type="range" id="s-density" min="0" max="20" step="1"></label>
 <label><b>Wall theme</b><select id="s-theme"><option value="0">Ember</option><option value="1">Lagoon</option><option value="2">Moss</option><option value="3">Mono</option></select></label>
-<label><input type="checkbox" id="s-minimap"> <b>Bird's-eye map</b> (toggle in-game with <code>M</code>)</label>
 <label><b>Map size</b> <span class="v" id="v-mapSize"></span><input type="range" id="s-mapSize" min="96" max="220" step="4"></label>
 <label><b>Map range</b> <span class="v" id="v-mapRange"></span><input type="range" id="s-mapRange" min="12" max="40" step="1"></label>
 <div class="row"><button class="pri" id="saveMaze">Save</button><button class="ghost" id="resetMaze">Reset defaults</button></div>
@@ -95,7 +94,7 @@ $('t1').setAttribute('aria-selected',n==1);$('t2').setAttribute('aria-selected',
 $('p1').classList.toggle('hidden',n!=1);$('p2').classList.toggle('hidden',n!=2)}
 // ---- Maze UI settings (localStorage, shared live with the maze tab) ----
 const KEY='mailmaze.settings.v1';
-const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
+const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,mapSize:148,mapRange:24,flip:false};
 function cur(){let s={};try{s=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}return{...DEF,...s}}
 function paint(){const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
 if(el.type=='checkbox')el.checked=!!s[k];else el.value=s[k];const v=$('v-'+k);if(v)v.textContent=s[k]}}
