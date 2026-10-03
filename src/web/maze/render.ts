@@ -437,18 +437,14 @@ export function drawMap(
   game: Game,
   world: World,
 ): void {
-  if (!SET.minimap) {
-    mm.style.display = "none";
-    return;
-  }
-  mm.style.display = "block";
+  // Always on: the minimap doubles as the button that opens the full map.
   const S = Math.max(96, Math.min(260, +SET.mapSize || 148));
   if (mm.width !== S) mm.width = mm.height = S;
   const R = Math.max(8, Math.min(40, +SET.mapRange || 24));
   drawMapInto(mx, game, world, R, S);
 }
 
-/** Fullscreen tactical map (B key): wide radius, same symbology, scaled up. */
+/** Fullscreen tactical map (click the minimap): wide radius, same symbology. */
 export function drawBigMap(
   mx: CanvasRenderingContext2D,
   big: HTMLCanvasElement,

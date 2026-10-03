@@ -12,12 +12,12 @@
 </head>
 <body>
 <canvas id="cv" aria-label="First-person view of an endless office floor"></canvas>
-<canvas id="mm" width="148" height="148" aria-label="Bird's-eye view of the office floor"></canvas>
+<canvas id="mm" width="148" height="148" title="Click to open the full map" aria-label="Bird's-eye view of the office floor — click to open the full map"></canvas>
 <div id="hud">
-<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="ud" hidden="hidden">Undo last</button><button id="mp" aria-pressed="true" title="Toggle bird's-eye map (M)">Map</button><button id="bg" aria-pressed="false" title="Fullscreen map (B)">Big map</button><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
-<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · demo data</div></div>
+<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
+<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · click the map · demo data</div></div>
 </div>
-<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Big map · <span id="bigst"></span> · press B or Esc to close</div></div>
+<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Full map · <span id="bigst"></span> · click or press Esc to close</div></div>
 <div id="finwrap" hidden="hidden"><div id="fin" role="status"><h2>Inbox clear 🎉</h2><p id="finst"></p><div class="row"><button id="finok">Keep walking</button><button id="finrv" class="pri">Review queue</button></div></div></div>
 <dialog id="dg">
 <h2>Move <span id="dn"></span> messages to Trash?</h2>

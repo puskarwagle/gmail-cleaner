@@ -25,17 +25,18 @@ button:disabled{opacity:.5;cursor:default}
 #ts{min-height:40px;box-sizing:border-box;max-width:min(560px,100%);padding:10px 14px;border-radius:10px;background:var(--pn);opacity:0;transition:opacity .3s;text-align:center}
 #ts.on{opacity:1}
 .ht{font-size:12px;color:var(--mut);text-shadow:0 1px 3px #000;text-align:center}
-dialog{background:var(--md);color:var(--mi);border:0;border-radius:16px;padding:24px;width:min(460px,calc(100% - 32px));font:14px 'IBM Plex Sans',sans-serif}
+dialog{background:var(--md);color:var(--mi);border:0;border-radius:16px;padding:24px;width:min(460px,calc(100% - 32px));font:14px 'IBM Plex Sans',sans-serif;touch-action:pan-y}
 dialog::backdrop{background:rgba(0,0,0,.65)}
 dialog h2{margin:0 0 8px;font-size:22px}
 dialog p{margin:0 0 12px;line-height:1.5;opacity:.8}
-#dl{border:1px solid rgba(128,128,128,.4);border-radius:10px;padding:4px 12px;margin-bottom:16px}
+#dl{border:1px solid rgba(128,128,128,.4);border-radius:10px;padding:4px 12px;margin-bottom:16px;max-height:216px;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
 #dl div{padding:8px 0;border-top:1px solid rgba(128,128,128,.25);font-size:13px}
 #dl div:first-child{border-top:0}
 .mo{font-family:'IBM Plex Mono',monospace;display:block}
 input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 14px;border:2px solid var(--ac);border-radius:8px;background:transparent;color:inherit;font:16px 'IBM Plex Mono',monospace}
 .row{display:flex;gap:12px;justify-content:flex-end}
-#mm{inset:auto;top:76px;right:12px;width:auto;height:auto;border:1px solid rgba(128,128,128,.4);border-radius:10px;pointer-events:none}
+#mm{inset:auto;top:76px;right:12px;width:auto;height:auto;border:1px solid rgba(128,128,128,.4);border-radius:10px;pointer-events:auto;cursor:pointer}
+#mm:hover{border-color:var(--ac)}
 #cp{display:flex;align-items:center;gap:8px;pointer-events:none}
 #cp.none{opacity:.75}
 #ca{display:inline-block;font-size:16px;color:var(--ac);transition:transform .12s linear}
@@ -57,12 +58,12 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
 </head>
 <body>
 <canvas id="cv" aria-label="First-person view of an endless office floor"></canvas>
-<canvas id="mm" width="148" height="148" aria-label="Bird's-eye view of the office floor"></canvas>
+<canvas id="mm" width="148" height="148" title="Click to open the full map" aria-label="Bird's-eye view of the office floor — click to open the full map"></canvas>
 <div id="hud">
-<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="ud" hidden="hidden">Undo last</button><button id="mp" aria-pressed="true" title="Toggle bird's-eye map (M)">Map</button><button id="bg" aria-pressed="false" title="Fullscreen map (B)">Big map</button><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
-<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · demo data</div></div>
+<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
+<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · click the map · demo data</div></div>
 </div>
-<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Big map · <span id="bigst"></span> · press B or Esc to close</div></div>
+<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Full map · <span id="bigst"></span> · click or press Esc to close</div></div>
 <div id="finwrap" hidden="hidden"><div id="fin" role="status"><h2>Inbox clear 🎉</h2><p id="finst"></p><div class="row"><button id="finok">Keep walking</button><button id="finrv" class="pri">Review queue</button></div></div></div>
 <dialog id="dg">
 <h2>Move <span id="dn"></span> messages to Trash?</h2>
@@ -86,7 +87,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     quality: 1,
     density: 7,
     theme: 0,
-    minimap: true,
     mapSize: 148,
     mapRange: 24,
     flip: false,
@@ -108,14 +108,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       const s = JSON.parse(ls.getItem(SKEY));
       if (s && typeof s === "object")
         Object.assign(SET, s);
-    } catch {}
-  }
-  function saveSET() {
-    const ls = storage();
-    if (!ls)
-      return;
-    try {
-      ls.setItem(SKEY, JSON.stringify(SET));
     } catch {}
   }
   function applySettingsObject(s) {
@@ -841,7 +833,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     const rv = $("rv");
     rv.disabled = !s.queue;
     rv.textContent = "Review " + s.queue + " in queue";
-    $("ud").hidden = !s.canUndo;
   }
 
   // src/web/maze/game.ts
@@ -1381,7 +1372,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
         this.cellWalk.clear();
         const ht = document.querySelector(".ht");
         if (ht)
-          ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · live inbox data";
+          ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · click the map · live inbox data";
         if (!msgs.length)
           toast("Report is empty — the maze stays walkable. Run scan again for fresh data.");
         else
@@ -1835,11 +1826,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     g.restore();
   }
   function drawMap(mx, mm, game, world) {
-    if (!SET.minimap) {
-      mm.style.display = "none";
-      return;
-    }
-    mm.style.display = "block";
     const S = Math.max(96, Math.min(260, +SET.mapSize || 148));
     if (mm.width !== S)
       mm.width = mm.height = S;
@@ -1944,7 +1930,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       trashed: game.T,
       kept: game.KP,
       fps,
-      canUndo: game.LB.length > 0,
       time: fmtMs(game.elapsed()),
       streak: game.streakLive()
     });
@@ -2021,12 +2006,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     if (wrap)
       wrap.hidden = true;
   }
-  function setMap(on) {
-    SET.minimap = !!on;
-    saveSET();
-    document.getElementById("mp").setAttribute("aria-pressed", SET.minimap ? "true" : "false");
-    drawMap(mx, mm, game, world);
-  }
   addEventListener("storage", (e) => {
     if (e.key === SKEY) {
       try {
@@ -2059,7 +2038,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
   }
   function setBig(on) {
     bigwrap.hidden = !on;
-    $2("bg").setAttribute("aria-pressed", on ? "true" : "false");
     if (on) {
       try {
         drawBigMap(bigx, big, game, world);
@@ -2067,11 +2045,11 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       paintBigStatus();
     }
   }
-  $2("bg").onclick = () => setBig(bigwrap.hidden);
   bigwrap.addEventListener("click", (e) => {
     if (e.target === bigwrap)
       setBig(false);
   });
+  mm.addEventListener("click", () => setBig(bigwrap.hidden));
   function twoFinger(e) {
     if (e.ctrlKey || e.metaKey || e.deltaMode !== 0)
       return false;
@@ -2093,24 +2071,29 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
   addEventListener("keydown", () => unlockAudio(), { once: true });
   addEventListener("wheel", () => unlockAudio(), { once: true, passive: true });
   addEventListener("keydown", (e) => {
-    if ($2("dg").open)
-      return;
     const k = e.key.toLowerCase();
+    const dlg = $2("dg");
+    if (dlg.open) {
+      if (k == "escape")
+        dlg.close();
+      return;
+    }
+    if (k == "escape") {
+      const fin = document.getElementById("finwrap");
+      if (fin && !fin.hidden) {
+        game.DONEACK = true;
+        hideFin();
+        return;
+      }
+      if (!bigwrap.hidden) {
+        setBig(false);
+        return;
+      }
+      return;
+    }
     if (k == " ") {
       e.preventDefault();
       game.setAuto(!game.aw);
-      return;
-    }
-    if (k == "m") {
-      setMap(!SET.minimap);
-      return;
-    }
-    if (k == "b") {
-      setBig(bigwrap.hidden);
-      return;
-    }
-    if (k == "escape" && !bigwrap.hidden) {
-      setBig(false);
       return;
     }
     game.keys[k] = 1;
@@ -2121,8 +2104,6 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     game.keys[e.key.toLowerCase()] = 0;
   });
   $2("au").onclick = () => game.setAuto(!game.aw);
-  $2("mp").onclick = () => setMap(!SET.minimap);
-  $2("mp").setAttribute("aria-pressed", SET.minimap ? "true" : "false");
   $2("st2").onclick = () => {
     location.href = "settings?token=" + encodeURIComponent(tok());
   };
@@ -2179,7 +2160,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       return;
     hideFin();
     $2("dn").textContent = String(game.Q.length);
-    $2("dl").innerHTML = game.Q.slice(-4).map((m) => '<div><span class="mo">' + m.from + "</span>" + m.sub + "</div>").join("") + (game.Q.length > 4 ? "<div>and " + (game.Q.length - 4) + " more</div>" : "");
+    $2("dl").innerHTML = game.Q.map((m) => '<div><span class="mo">' + m.from + "</span>" + m.sub + "</div>").join("");
     yes.value = "";
     go.disabled = true;
     dg.showModal();
@@ -2204,7 +2185,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       dg.close();
       hud();
       sfxTrash();
-      toast("Moved " + game.LB.length + " messages to Trash. Undo is available.");
+      toast("Moved " + game.LB.length + " messages to Trash. Undo last run lives in Settings (⚙).");
       return;
     }
     go.disabled = true;
@@ -2227,47 +2208,11 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       dg.close();
       hud();
       sfxTrash();
-      toast("Moved " + ok.size + " of " + (ok.size + bad.length) + " to Trash. Undo is available." + (bad.length ? " " + bad.length + " failed: " + (bad[0].error || bad[0].id) : ""));
+      toast("Moved " + ok.size + " of " + (ok.size + bad.length) + " to Trash. Undo last run lives in Settings (⚙)." + (bad.length ? " " + bad.length + " failed: " + (bad[0].error || bad[0].id) : ""));
     } catch (e) {
       toast(String(e?.message || e));
     }
     go.disabled = true;
-  };
-  $2("ud").onclick = async () => {
-    if (game.MSGS) {
-      try {
-        const r = await fetch("api/undo", { method: "POST", headers: hdrs(), body: "{}" });
-        const j = await r.json().catch(() => null);
-        if (!r.ok)
-          throw new Error(j && j.error || "Undo failed (" + r.status + ")");
-        const back = new Set((j.records || []).filter((x) => x.restored).map((x) => x.id));
-        let n = 0;
-        game.LB = game.LB.filter((m) => {
-          if (m.id && back.has(m.id)) {
-            if (m.key)
-              game.done.delete(m.key);
-            n++;
-            return false;
-          }
-          return true;
-        });
-        game.T -= n;
-        hud();
-        toast("Restored " + n + " messages to your Inbox");
-        return;
-      } catch (e) {
-        toast(String(e?.message || e));
-        return;
-      }
-    }
-    game.T -= game.LB.length;
-    game.LB.forEach((m) => {
-      if (m.key)
-        game.done.delete(m.key);
-    });
-    toast("Restored " + game.LB.length + " messages to your Inbox");
-    game.LB = [];
-    hud();
   };
   hud();
   game.loadReport();

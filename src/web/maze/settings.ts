@@ -12,7 +12,6 @@ export interface MazeSettings {
   quality: number;
   density: number;
   theme: number;
-  minimap: boolean;
   mapSize: number;
   mapRange: number;
   flip: boolean;
@@ -30,7 +29,6 @@ export const SDEF: MazeSettings = {
   quality: 1,
   density: 7,
   theme: 0,
-  minimap: true,
   mapSize: 148,
   mapRange: 24,
   flip: false,

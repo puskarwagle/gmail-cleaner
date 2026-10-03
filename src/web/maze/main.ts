@@ -1,9 +1,9 @@
 /**
- * Maze entry point (browser only). Wires canvas, input, HUD dialog, trash /
- * undo API calls, and the frame loop. All world/game/render logic is
- * imported; this file only owns DOM + timing.
+ * Maze entry point (browser only). Wires canvas, input, HUD dialog, the trash
+ * API call, and the frame loop. All world/game/render logic is imported;
+ * this file only owns DOM + timing.
  */
-import { SET, SKEY, applySettingsObject, loadSettings, saveSET } from "./settings.ts";
+import { SET, SKEY, applySettingsObject, loadSettings } from "./settings.ts";
 import { setTheme } from "./textures.ts";
 import { World } from "./world.ts";
 import { Game, hdrs, tok } from "./game.ts";
@@ -53,7 +53,6 @@ function hud(): void {
     trashed: game.T,
     kept: game.KP,
     fps,
-    canUndo: game.LB.length > 0,
     time: fmtMs(game.elapsed()),
     streak: game.streakLive(),
   });
@@ -159,13 +158,6 @@ function hideFin(): void {
   if (wrap) wrap.hidden = true;
 }
 
-function setMap(on: boolean): void {
-  SET.minimap = !!on;
-  saveSET();
-  (document.getElementById("mp") as HTMLButtonElement).setAttribute("aria-pressed", SET.minimap ? "true" : "false");
-  drawMap(mx, mm, game, world);
-}
-
 addEventListener("storage", (e: StorageEvent) => {
   if (e.key === SKEY) {
     try {
@@ -202,7 +194,6 @@ function paintBigStatus(): void {
 
 function setBig(on: boolean): void {
   bigwrap.hidden = !on;
-  ($("bg") as HTMLButtonElement).setAttribute("aria-pressed", on ? "true" : "false");
   if (on) {
     try {
       drawBigMap(bigx, big, game, world);
@@ -212,10 +203,11 @@ function setBig(on: boolean): void {
     paintBigStatus();
   }
 }
-($("bg") as HTMLButtonElement).onclick = () => setBig(bigwrap.hidden);
 bigwrap.addEventListener("click", (e) => {
   if (e.target === bigwrap) setBig(false);
 });
+// The minimap is the map button: clicking it opens (click outside / Esc closes).
+mm.addEventListener("click", () => setBig(bigwrap.hidden));
 
 // Trackpad, two fingers only: horizontal swipe turns. Ignores pinch-zoom,
 // notched mouse-wheel ticks and single-finger drags (no drag steering).
@@ -245,23 +237,30 @@ addEventListener("keydown", () => unlockAudio(), { once: true });
 addEventListener("wheel", () => unlockAudio(), { once: true, passive: true });
 
 addEventListener("keydown", (e: KeyboardEvent) => {
-  if (($("dg") as HTMLDialogElement).open) return;
   const k = e.key.toLowerCase();
+  const dlg = $("dg") as HTMLDialogElement;
+  if (dlg.open) {
+    // Esc cancels the trash confirm (native dialog cancel + explicit close).
+    if (k == "escape") dlg.close();
+    return;
+  }
+  if (k == "escape") {
+    // Esc order: inbox-clear overlay (keep walking) → full map → nothing.
+    const fin = document.getElementById("finwrap");
+    if (fin && !fin.hidden) {
+      game.DONEACK = true;
+      hideFin();
+      return;
+    }
+    if (!bigwrap.hidden) {
+      setBig(false);
+      return;
+    }
+    return;
+  }
   if (k == " ") {
     e.preventDefault();
     game.setAuto(!game.aw);
-    return;
-  }
-  if (k == "m") {
-    setMap(!SET.minimap);
-    return;
-  }
-  if (k == "b") {
-    setBig(bigwrap.hidden);
-    return;
-  }
-  if (k == "escape" && !bigwrap.hidden) {
-    setBig(false);
     return;
   }
   game.keys[k] = 1;
@@ -271,8 +270,6 @@ addEventListener("keyup", (e: KeyboardEvent) => {
   game.keys[e.key.toLowerCase()] = 0;
 });
 ($("au") as HTMLButtonElement).onclick = () => game.setAuto(!game.aw);
-($("mp") as HTMLButtonElement).onclick = () => setMap(!SET.minimap);
-($("mp") as HTMLButtonElement).setAttribute("aria-pressed", SET.minimap ? "true" : "false");
 ($("st2") as HTMLButtonElement).onclick = () => {
   location.href = "settings?token=" + encodeURIComponent(tok());
 };
@@ -336,10 +333,8 @@ function openReview(): void {
   if (!game.Q.length) return;
   hideFin();
   $("dn").textContent = String(game.Q.length);
-  $("dl").innerHTML =
-    game.Q.slice(-4)
-      .map((m) => '<div><span class="mo">' + m.from + "</span>" + m.sub + "</div>")
-      .join("") + (game.Q.length > 4 ? "<div>and " + (game.Q.length - 4) + " more</div>" : "");
+  // Whole queue, not a sample: #dl is capped at ~4.5 rows and scrolls.
+  $("dl").innerHTML = game.Q.map((m) => '<div><span class="mo">' + m.from + "</span>" + m.sub + "</div>").join("");
   yes.value = "";
   go.disabled = true;
   dg.showModal();
@@ -363,7 +358,7 @@ go.onclick = async () => {
     dg.close();
     hud();
     sfxTrash();
-    toast("Moved " + game.LB.length + " messages to Trash. Undo is available.");
+    toast("Moved " + game.LB.length + " messages to Trash. Undo last run lives in Settings (⚙).");
     return;
   }
   go.disabled = true;
@@ -386,46 +381,16 @@ go.onclick = async () => {
     hud();
     sfxTrash();
     toast(
-      "Moved " + ok.size + " of " + (ok.size + bad.length) + " to Trash. Undo is available." + (bad.length ? " " + bad.length + " failed: " + (bad[0].error || bad[0].id) : ""),
+      "Moved " + ok.size + " of " + (ok.size + bad.length) + " to Trash. Undo last run lives in Settings (⚙)." + (bad.length ? " " + bad.length + " failed: " + (bad[0].error || bad[0].id) : ""),
     );
   } catch (e) {
     toast(String((e as Error)?.message || e));
   }
   go.disabled = true;
 };
-($("ud") as HTMLButtonElement).onclick = async () => {
-  if (game.MSGS) {
-    try {
-      const r = await fetch("api/undo", { method: "POST", headers: hdrs(), body: "{}" });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) throw new Error((j && j.error) || "Undo failed (" + r.status + ")");
-      const back = new Set((j.records || []).filter((x: { restored: boolean }) => x.restored).map((x: { id: string }) => x.id));
-      let n = 0;
-      game.LB = game.LB.filter((m) => {
-        if (m.id && back.has(m.id)) {
-          if (m.key) game.done.delete(m.key);
-          n++;
-          return false;
-        }
-        return true;
-      });
-      game.T -= n;
-      hud();
-      toast("Restored " + n + " messages to your Inbox");
-      return;
-    } catch (e) {
-      toast(String((e as Error)?.message || e));
-      return;
-    }
-  }
-  game.T -= game.LB.length;
-  game.LB.forEach((m) => {
-    if (m.key) game.done.delete(m.key);
-  });
-  toast("Restored " + game.LB.length + " messages to your Inbox");
-  game.LB = [];
-  hud();
-};
+
+// Undo lives on the settings page now (it POSTs /api/undo itself); this tab
+// only rebuilds from reports/latest.json when you navigate back.
 
 hud();
 void game.loadReport();

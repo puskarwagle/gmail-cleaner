@@ -8,7 +8,6 @@ export interface HudState {
   trashed: number;
   kept: number;
   fps: number;
-  canUndo: boolean;
   /** Elapsed run time, already formatted (see fmtMs). */
   time: string;
   /** Live pickup-chain length; 0 hides it. */
@@ -101,5 +100,4 @@ export function updateHud(s: HudState): void {
   const rv = $("rv") as HTMLButtonElement;
   rv.disabled = !s.queue;
   rv.textContent = "Review " + s.queue + " in queue";
-  ($("ud") as HTMLButtonElement).hidden = !s.canUndo;
 }

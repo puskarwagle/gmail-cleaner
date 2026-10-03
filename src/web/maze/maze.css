@@ -16,17 +16,18 @@ button:disabled{opacity:.5;cursor:default}
 #ts{min-height:40px;box-sizing:border-box;max-width:min(560px,100%);padding:10px 14px;border-radius:10px;background:var(--pn);opacity:0;transition:opacity .3s;text-align:center}
 #ts.on{opacity:1}
 .ht{font-size:12px;color:var(--mut);text-shadow:0 1px 3px #000;text-align:center}
-dialog{background:var(--md);color:var(--mi);border:0;border-radius:16px;padding:24px;width:min(460px,calc(100% - 32px));font:14px 'IBM Plex Sans',sans-serif}
+dialog{background:var(--md);color:var(--mi);border:0;border-radius:16px;padding:24px;width:min(460px,calc(100% - 32px));font:14px 'IBM Plex Sans',sans-serif;touch-action:pan-y}
 dialog::backdrop{background:rgba(0,0,0,.65)}
 dialog h2{margin:0 0 8px;font-size:22px}
 dialog p{margin:0 0 12px;line-height:1.5;opacity:.8}
-#dl{border:1px solid rgba(128,128,128,.4);border-radius:10px;padding:4px 12px;margin-bottom:16px}
+#dl{border:1px solid rgba(128,128,128,.4);border-radius:10px;padding:4px 12px;margin-bottom:16px;max-height:216px;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
 #dl div{padding:8px 0;border-top:1px solid rgba(128,128,128,.25);font-size:13px}
 #dl div:first-child{border-top:0}
 .mo{font-family:'IBM Plex Mono',monospace;display:block}
 input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 14px;border:2px solid var(--ac);border-radius:8px;background:transparent;color:inherit;font:16px 'IBM Plex Mono',monospace}
 .row{display:flex;gap:12px;justify-content:flex-end}
-#mm{inset:auto;top:76px;right:12px;width:auto;height:auto;border:1px solid rgba(128,128,128,.4);border-radius:10px;pointer-events:none}
+#mm{inset:auto;top:76px;right:12px;width:auto;height:auto;border:1px solid rgba(128,128,128,.4);border-radius:10px;pointer-events:auto;cursor:pointer}
+#mm:hover{border-color:var(--ac)}
 #cp{display:flex;align-items:center;gap:8px;pointer-events:none}
 #cp.none{opacity:.75}
 #ca{display:inline-block;font-size:16px;color:var(--ac);transition:transform .12s linear}

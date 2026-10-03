@@ -642,7 +642,7 @@ export class Game {
       this.cellSeen.clear();
       this.cellWalk.clear();
       const ht = document.querySelector(".ht");
-      if (ht) ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · live inbox data";
+      if (ht) ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · click the map · live inbox data";
       if (!msgs.length) toast("Report is empty — the maze stays walkable. Run scan again for fresh data.");
       else toast(msgs.length + " messages loaded — walk into envelopes to queue them. Gold ones are protected.");
     } catch {
