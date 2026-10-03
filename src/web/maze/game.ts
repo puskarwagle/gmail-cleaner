@@ -4,6 +4,7 @@
  */
 import { H2, RNG, SUPER, T_FLOOR, astar, losClear, mailSpots, pull, type SuperCell } from "./office-gen.ts";
 import { SET } from "./settings.ts";
+import { sfxKeep, sfxPickup } from "./audio.ts";
 import { toast } from "./hud.ts";
 import type { World } from "./world.ts";
 
@@ -137,6 +138,24 @@ export class Game {
   huntY = 0;
   /** Nearest-mail snapshot refreshed by main.ts (~8 Hz) for the compass + guide marker. */
   guide: NearestMail | null = null;
+
+  /** Pickup fly-animation spawns (render.ts projects them, then drains by age). */
+  pickups: Array<{ x: number; y: number; t0: number; m: MailItem }> = [];
+  /** Consecutive pickups within 3 s: streak counter + rising pickup pitch. */
+  streak = 0;
+  lastPickT = 0;
+  /** Run stats: clock starts on the first step, distance accumulates live. */
+  startT: number | null = null;
+  dist = 0;
+  /** Trashable pickups per category (finish-overlay breakdown). */
+  pickedCats = new Map<string, number>();
+  /** Wall-clock ms of the first inbox-clear (frozen run time), once. */
+  clearMs: number | null = null;
+  /** Fog of war: tiles revealed near the player; floor tiles per super-cell. */
+  seen = new Set<string>();
+  cellSeen = new Map<string, number>();
+  private cellWalk = new Map<string, number>();
+  private lastSeenT = 0;
 
   constructor(world: World) {
     this.world = world;
@@ -365,6 +384,94 @@ export class Game {
     if (this.fx.length > 6) this.fx.splice(0, this.fx.length - 6);
   }
 
+  /**
+   * Shared pickup bookkeeping: streak, fly-animation spawn, sfx pitch, and
+   * first-clear freeze of the run clock. Called from both pickup branches.
+   */
+  notePick(m: MailItem, x: number, y: number, prot: boolean): void {
+    const n = nowMs();
+    this.streak = n - this.lastPickT < 3000 ? this.streak + 1 : 1;
+    this.lastPickT = n;
+    this.pickups.push({ x, y, t0: n, m });
+    if (this.pickups.length > 8) this.pickups.shift();
+    if (prot) sfxKeep();
+    else sfxPickup(this.streak);
+    if (this.clearMs === null && this.MSGS) {
+      const p = this.progress();
+      if (p.done && p.total) this.clearMs = this.startT === null ? 0 : n - this.startT;
+    }
+  }
+
+  /** Streak shown on the HUD only while the chain is still alive. */
+  streakLive(): number {
+    return this.streak >= 2 && nowMs() - this.lastPickT < 3500 ? this.streak : 0;
+  }
+
+  /** Run time in ms (frozen at inbox clear once it happens). */
+  elapsed(): number {
+    if (this.clearMs !== null) return this.clearMs;
+    return this.startT === null ? 0 : Math.max(0, nowMs() - this.startT);
+  }
+
+  /** Reveal tiles in a radius around the player (fog-of-war map memory). */
+  private markSeen(): void {
+    const cx = Math.floor(this.px),
+      cy = Math.floor(this.py),
+      R = 9;
+    for (let j = -R; j <= R; j++)
+      for (let i = -R; i <= R; i++) {
+        if (i * i + j * j > R * R) continue;
+        const tx = cx + i,
+          ty = cy + j,
+          key = tx + "," + ty;
+        if (this.seen.has(key)) continue;
+        this.seen.add(key);
+        if (this.world.wall(tx, ty)) continue;
+        const ck = Math.floor(tx / SUPER) + "," + Math.floor(ty / SUPER);
+        this.cellSeen.set(ck, (this.cellSeen.get(ck) || 0) + 1);
+      }
+  }
+
+  /** Walkable (floor) tiles in a super-cell, cached forever (cells are immutable). */
+  private walkable(sx: number, sy: number): number {
+    const ck = sx + "," + sy;
+    const hit = this.cellWalk.get(ck);
+    if (hit !== undefined) return hit;
+    const c = this.world.getSuper(sx, sy);
+    let n = 0;
+    for (let i = 0; i < c.tiles.length; i++) if (c.tiles[i] === T_FLOOR) n++;
+    this.cellWalk.set(ck, n);
+    return n;
+  }
+
+  /**
+   * Exploration progress: floor tiles revealed vs. total floor tiles in every
+   * super-cell the player has stepped into (new cells lower it — fog games
+   * work this way). Percent is clamped to 100.
+   */
+  explore(): { seen: number; walk: number; pct: number } {
+    let sn = 0,
+      wk = 0;
+    for (const ck of this.cellSeen.keys()) {
+      const ci = ck.indexOf(",");
+      sn += this.cellSeen.get(ck) as number;
+      wk += this.walkable(+ck.slice(0, ci), +ck.slice(ci + 1));
+    }
+    if (!wk) return { seen: 0, walk: 0, pct: 0 };
+    return { seen: sn, walk: wk, pct: Math.min(100, Math.round((sn / wk) * 100)) };
+  }
+
+  /** Finish-overlay run summary (time frozen at clear, distance walked live). */
+  runStats(): { timeMs: number; dist: number; cats: Record<string, number>; picked: number; kept: number } {
+    const cats: Record<string, number> = {};
+    let picked = 0;
+    for (const [k, v] of this.pickedCats) {
+      cats[k] = v;
+      picked += v;
+    }
+    return { timeMs: this.elapsed(), dist: this.dist, cats, picked, kept: this.KP };
+  }
+
   hit(x: number, y: number, r: number): boolean {
     return (
       this.world.wall(Math.floor(x - r), Math.floor(y - r)) ||
@@ -524,6 +631,16 @@ export class Game {
       this.SHUFI = 0;
       this.DONEACK = false;
       this.fx.length = 0;
+      this.pickups.length = 0;
+      // Fresh report = fresh run: reset streak, clock, stats, and fog.
+      this.streak = 0;
+      this.startT = null;
+      this.dist = 0;
+      this.clearMs = null;
+      this.pickedCats.clear();
+      this.seen.clear();
+      this.cellSeen.clear();
+      this.cellWalk.clear();
       const ht = document.querySelector(".ht");
       if (ht) ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · live inbox data";
       if (!msgs.length) toast("Report is empty — the maze stays walkable. Run scan again for fresh data.");
@@ -611,9 +728,23 @@ export class Game {
     this.ang += this.vt * dt * (+SET.turn || 2.4);
     const nx = this.px + Math.cos(this.ang) * this.vf * (+SET.move || 10) * dt;
     const ny = this.py + Math.sin(this.ang) * this.vf * (+SET.move || 10) * dt;
+    const ox = this.px,
+      oy = this.py;
     if (!this.hit(nx, this.py, 0.3)) this.px = nx;
     if (!this.hit(this.px, ny, 0.3)) this.py = ny;
+    const mdx = this.px - ox,
+      mdy = this.py - oy,
+      md = mdx * mdx + mdy * mdy;
+    if (md > 1e-9) {
+      if (this.startT === null) this.startT = nowMs();
+      this.dist += Math.sqrt(md);
+    }
     this.world.setPlayer(this.px, this.py);
+    const nt = nowMs();
+    if (nt - this.lastSeenT > 100) {
+      this.lastSeenT = nt;
+      this.markSeen();
+    }
     const pcx = Math.floor(this.px),
       pcy = Math.floor(this.py);
     for (let j = -1; j <= 1; j++)
@@ -631,6 +762,7 @@ export class Game {
               this.kp.add(key);
               this.KP++;
               this.pushFx("Kept safe", "#e9c46a", true);
+              this.notePick(m, cx + 0.5, cy + 0.5, true);
               toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
               onHud();
             }
@@ -639,6 +771,8 @@ export class Game {
             m.key = key;
             this.Q.push(m);
             this.pushFx("Queued", m.c || "#fff", false);
+            this.notePick(m, cx + 0.5, cy + 0.5, false);
+            this.pickedCats.set(m.cat, (this.pickedCats.get(m.cat) || 0) + 1);
             toast("Queued: " + m.from + " · " + m.sub);
             onHud();
           }

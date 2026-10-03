@@ -9,6 +9,20 @@ export interface HudState {
   kept: number;
   fps: number;
   canUndo: boolean;
+  /** Elapsed run time, already formatted (see fmtMs). */
+  time: string;
+  /** Live pickup-chain length; 0 hides it. */
+  streak: number;
+}
+
+/** 65000 → "1:05" (hours only appear past 60 min: "1:02:03"). */
+export function fmtMs(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600),
+    m = Math.floor((s % 3600) / 60),
+    sec = s % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return (h ? h + ":" : "") + mm + ":" + String(sec).padStart(2, "0");
 }
 
 function $(id: string): HTMLElement {
@@ -60,7 +74,19 @@ export function updateCompass(t: CompassTarget | null): void {
 export function updateHud(s: HudState): void {
   const st = $("st");
   st.innerHTML =
-    "Queued <b>" + s.queue + "</b> · Trashed <b>" + s.trashed + "</b> · Kept safe <b>" + s.kept + "</b> · " + s.fps + " fps";
+    "Queued <b>" +
+    s.queue +
+    "</b> · Trashed <b>" +
+    s.trashed +
+    "</b> · Kept safe <b>" +
+    s.kept +
+    "</b>" +
+    (s.streak >= 2 ? " · <b>" + s.streak + "× streak</b>" : "") +
+    " · " +
+    s.time +
+    " · " +
+    s.fps +
+    " fps";
   // Counter tick: pulse the stat pill on every pickup/trash/undo.
   if (prevQ >= 0 && (s.queue !== prevQ || s.trashed !== prevT || s.kept !== prevK)) {
     st.classList.remove("bump");

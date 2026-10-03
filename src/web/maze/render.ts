@@ -284,8 +284,40 @@ export function draw(
   L.sort((a, b) => b[0] - a[0]);
   for (const e of L)
     drawEnvelope(g, e[1], e[2], Hh / 2 + Math.sin(t * 2 + e[4] * 3 + e[5]) * e[3] * 0.1 + e[3] * 0.2, e[3], Math.max(0.2, 1 - e[0] / 45), t);
+  drawPickups(g, W, Hh, game, t * 1000);
   drawGuide(g, W, Hh, game);
   drawFx(g, W, Hh, game, t * 1000);
+}
+
+// Pickup juice: freshly grabbed envelopes rush toward the crosshair, swelling
+// and fading over ~450 ms (game.pickups, spawned by notePick, drained by age).
+function drawPickups(g: CanvasRenderingContext2D, W: number, Hh: number, game: Game, now: number): void {
+  if (!game.pickups.length) return;
+  game.pickups = game.pickups.filter((p) => now - p.t0 < 450);
+  if (!game.pickups.length) return;
+  const dx0 = Math.cos(game.ang),
+    dy0 = Math.sin(game.ang),
+    fov = Math.max(0.55, Math.min(1, (0.55 * W) / Hh)) * (+SET.fov || 1),
+    plx = -dy0 * fov,
+    ply = dx0 * fov,
+    inv = 1 / (plx * dy0 - dx0 * ply);
+  g.save();
+  for (const p of game.pickups) {
+    const k = Math.min(1, (now - p.t0) / 450),
+      ease = k * k;
+    const sx = p.x - game.px,
+      sy = p.y - game.py,
+      tx = inv * (dy0 * sx - dx0 * sy),
+      ty = inv * (-ply * sx + plx * sy);
+    if (ty < 0.2) continue;
+    const s = (Hh / ty) * 0.3,
+      X = (W / 2) * (1 + tx / ty),
+      Y = Hh / 2 + s * 0.2;
+    const X2 = X + (W / 2 - X) * ease,
+      Y2 = Y + (Hh * 0.45 - Y) * ease;
+    drawEnvelope(g, p.m, X2, Y2, s * (1 + 1.8 * ease), (1 - k) * 0.95, 0);
+  }
+  g.restore();
 }
 
 // Follow-the-dot guide: projects the nearest mail's bearing onto the screen
@@ -398,6 +430,7 @@ export function drawFx(
 }
 // Bird's-eye view: overhead tiles around the player (walls dim, door frames
 // wood, mail as dots, gold squares = protected) plus a heading arrow. ~8 Hz.
+// Fog of war: only revealed tiles/dots draw (see drawMapInto).
 export function drawMap(
   mx: CanvasRenderingContext2D,
   mm: HTMLCanvasElement,
@@ -438,12 +471,18 @@ function drawMapInto(
     s = S / n,
     ptx = Math.floor(game.px),
     pty = Math.floor(game.py);
+  // Fog of war: a tile renders only once revealed (game.seen) or while it is
+  // right around the player, so the map fills in as you explore. Mail dots are
+  // gated the same way — the compass still guides you to hidden envelopes.
+  const vis = (tx: number, ty: number, i: number, j: number): boolean =>
+    Math.max(Math.abs(i), Math.abs(j)) <= 6 || game.seen.has(tx + "," + ty);
   mx.fillStyle = "rgba(5,8,12,.94)";
   mx.fillRect(0, 0, S, S);
   for (let j = -R; j <= R; j++)
     for (let i = -R; i <= R; i++) {
       const tx = ptx + i,
         ty = pty + j;
+      if (!vis(tx, ty, i, j)) continue;
       const sx = Math.floor(tx / SUPER),
         sy = Math.floor(ty / SUPER),
         c = world.getSuper(sx, sy),
@@ -459,8 +498,9 @@ function drawMapInto(
   for (let j = -R; j <= R; j++)
     for (let i = -R; i <= R; i++) {
       const cx = ptx + i,
-        cy = pty + j,
-        m = game.mail(cx, cy);
+        cy = pty + j;
+      if (!vis(cx, cy, i, j)) continue;
+      const m = game.mail(cx, cy);
       if (!m || game.done.has(cx + "," + cy)) continue;
       const X = (i + R) * s + s / 2,
         Y = (j + R) * s + s / 2;

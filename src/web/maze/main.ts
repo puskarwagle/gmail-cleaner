@@ -7,7 +7,8 @@ import { SET, SKEY, applySettingsObject, loadSettings, saveSET } from "./setting
 import { setTheme } from "./textures.ts";
 import { World } from "./world.ts";
 import { Game, hdrs, tok } from "./game.ts";
-import { toast, updateCompass, updateHud } from "./hud.ts";
+import { fmtMs, toast, updateCompass, updateHud } from "./hud.ts";
+import { sfxClear, sfxTrash, unlockAudio } from "./audio.ts";
 import { draw, drawBigMap, drawMap, type FrameBuffers } from "./render.ts";
 
 function $(id: string): HTMLElement {
@@ -46,10 +47,86 @@ function fit(): void {
 }
 addEventListener("resize", fit);
 fit();
-
 function hud(): void {
-  updateHud({ queue: game.Q.length, trashed: game.T, kept: game.KP, fps, canUndo: game.LB.length > 0 });
+  updateHud({
+    queue: game.Q.length,
+    trashed: game.T,
+    kept: game.KP,
+    fps,
+    canUndo: game.LB.length > 0,
+    time: fmtMs(game.elapsed()),
+    streak: game.streakLive(),
+  });
   checkDone();
+}
+
+// ---- Personal best (browser-local; fastest full clear wins) ----
+const PBKEY = "mailmaze.pb.v1";
+interface Pb {
+  best: number | null;
+  last: number | null;
+  clears: number;
+}
+function loadPB(): Pb {
+  try {
+    const s = JSON.parse(localStorage.getItem(PBKEY) as string);
+    if (s && typeof s === "object") return { best: null, last: null, clears: 0, ...s };
+  } catch {
+    // first run / privacy mode
+  }
+  return { best: null, last: null, clears: 0 };
+}
+function savePB(p: Pb): void {
+  try {
+    localStorage.setItem(PBKEY, JSON.stringify(p));
+  } catch {
+    // ignore quota / privacy mode
+  }
+}
+function fmtDist(m: number): string {
+  return m >= 1000 ? (m / 1000).toFixed(2) + " km" : Math.round(m) + " m";
+}
+
+/** Finish-overlay text, built once per clear (records PB + plays fanfare). */
+let finishHtml: string | null = null;
+
+function finishText(p: { total: number | null; trashTotal: number | null; gathered: number; kept: number }): string {
+  const s = game.runStats();
+  const cats = Object.entries(s.cats)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => k.charAt(0).toUpperCase() + k.slice(1) + " " + v)
+    .join(" · ");
+  const ex = game.explore();
+  const lines: string[] = [];
+  lines.push(
+    "Gathered " +
+      p.gathered +
+      " of " +
+      (p.trashTotal ?? p.total) +
+      " disposable messages" +
+      (p.kept ? " · " + p.kept + " protected kept safe" : "") +
+      ".",
+  );
+  if (s.timeMs > 0) {
+    lines.push(
+      "Time " + fmtMs(s.timeMs) + " · walked " + fmtDist(s.dist) + " · " + s.picked + " envelopes picked up · explored " + ex.pct + "%.",
+    );
+  }
+  if (cats) lines.push(cats + ".");
+  if (s.timeMs > 0) {
+    const pb = loadPB();
+    const prev = pb.best;
+    const best = prev === null || s.timeMs < prev;
+    savePB({ best: best ? s.timeMs : prev, last: s.timeMs, clears: pb.clears + 1 });
+    sfxClear();
+    lines.push(
+      best
+        ? "★ New personal best" + (prev !== null ? " — was " + fmtMs(prev) : "") + "!"
+        : "Personal best " + fmtMs(prev as number) + " · cleared " + (pb.clears + 1) + "× total.",
+    );
+  }
+  lines.push("Review the queue to move them to Trash, or keep walking.");
+  return lines.join("<br>");
 }
 
 /** Inbox-clear overlay: shows once per report when all trashable mail is gathered. */
@@ -62,15 +139,17 @@ function checkDone(): void {
   } catch {
     return;
   }
-  if (p.done && p.total && !game.DONEACK) {    const st = document.getElementById("finst");
-    if (st)
-      st.textContent =
-        "Gathered " + p.gathered + " of " + (p.trashTotal ?? p.total) + " disposable messages" +
-        (p.kept ? " · " + p.kept + " protected kept safe" : "") +
-        ". Review the queue to move them to Trash, or keep walking.";
+  if (p.done && p.total && !game.DONEACK) {
+    if (finishHtml === null) finishHtml = finishText(p);
+    const st = document.getElementById("finst");
+    if (st) st.innerHTML = finishHtml;
     wrap.hidden = false;
   } else if (game.DONEACK || !p.done) {
-    if (!p.done) game.DONEACK = false;
+    if (!p.done) {
+      game.DONEACK = false;
+      finishHtml = null;
+      game.clearMs = null; // a re-gather after undo runs a fresh timed clear
+    }
     wrap.hidden = true;
   }
 }
@@ -104,6 +183,23 @@ const bigwrap = $("bigwrap") as HTMLElement;
 const big = $("big") as HTMLCanvasElement;
 const bigx = big.getContext("2d") as CanvasRenderingContext2D;
 
+/** Big-map footer: progress + fog exploration + personal best. */
+function bigStatus(): string {
+  try {
+    const p = game.progress();
+    const ex = game.explore();
+    const pb = loadPB();
+    const base = p.total == null ? "demo maze" : "gathered " + p.gathered + " / " + (p.trashTotal ?? p.total);
+    return base + " · explored " + ex.pct + "%" + (pb.best !== null ? " · best " + fmtMs(pb.best) : "");
+  } catch {
+    return "";
+  }
+}
+function paintBigStatus(): void {
+  const st = document.getElementById("bigst");
+  if (st) st.textContent = bigStatus();
+}
+
 function setBig(on: boolean): void {
   bigwrap.hidden = !on;
   ($("bg") as HTMLButtonElement).setAttribute("aria-pressed", on ? "true" : "false");
@@ -113,16 +209,7 @@ function setBig(on: boolean): void {
     } catch {
       // world gen is lazy; next frame retries
     }
-    const st = document.getElementById("bigst");
-    if (st) {
-      try {
-        const p = game.progress();
-        st.textContent =
-          p.total == null ? "demo maze" : "gathered " + p.gathered + " / " + (p.trashTotal ?? p.total);
-      } catch {
-        // ignore
-      }
-    }
+    paintBigStatus();
   }
 }
 ($("bg") as HTMLButtonElement).onclick = () => setBig(bigwrap.hidden);
@@ -152,6 +239,11 @@ addEventListener(
   },
   { passive: false },
 );
+// Autoplay policy: create/resume the audio context on the first gesture.
+addEventListener("pointerdown", () => unlockAudio(), { once: true });
+addEventListener("keydown", () => unlockAudio(), { once: true });
+addEventListener("wheel", () => unlockAudio(), { once: true, passive: true });
+
 addEventListener("keydown", (e: KeyboardEvent) => {
   if (($("dg") as HTMLDialogElement).open) return;
   const k = e.key.toLowerCase();
@@ -228,6 +320,7 @@ function frame(ms: number): void {
     if (!bigwrap.hidden) {
       try {
         drawBigMap(bigx, big, game, world);
+        paintBigStatus();
       } catch {
         // retry next tick
       }
@@ -269,6 +362,7 @@ go.onclick = async () => {
     game.LB = game.Q.splice(0);
     dg.close();
     hud();
+    sfxTrash();
     toast("Moved " + game.LB.length + " messages to Trash. Undo is available.");
     return;
   }
@@ -290,6 +384,7 @@ go.onclick = async () => {
     game.T += ok.size;
     dg.close();
     hud();
+    sfxTrash();
     toast(
       "Moved " + ok.size + " of " + (ok.size + bad.length) + " to Trash. Undo is available." + (bad.length ? " " + bad.length + " failed: " + (bad[0].error || bad[0].id) : ""),
     );
