@@ -25,6 +25,10 @@ gmail-cleaner/
 │   │   │                     against latest.json; credentials validated + 0600.
 │   │   └── settings.html     settings page: Maze UI tab (localStorage, live) +
 │   │                         Gmail API tab (upload/paste credentials, status, revoke)
+│   │   └── maze/               maze game sources (pure, no DOM except via main — future split)
+│   │       └── office-gen.ts   pure office generator (SUPER/genSuper/buildArea/astar/
+│   │                             losClear/pull/mailSpots); single source of truth for
+│   │                             the html block below
 │   └── cli/                  presentation only (may print / read stdin / open browser)
 │       ├── scanCommand.ts    → runScan + printSummary
 │       ├── reportCommand.ts  → loadLatestReport + printSummary + printProposedActions
@@ -32,17 +36,23 @@ gmail-cleaner/
 │       ├── undoCommand.ts    → runUndo
 │       ├── mazeCommand.ts    → needs reports/latest.json + startMazeServer + open browser
 │       └── ui.ts             printSummary, printProposedActions, askYes (exactly YES)
-├── mail-maze.html            single-file OFFICE FLOOR game; live mode via /api/report (token header),
+├── mail-maze.html            single-file OFFICE FLOOR game (GENERATED — do not hand-edit;
+│                             run `bun run build:maze`); live mode via /api/report (token header),
 │                             demo fallback when opened via file://; bird's-eye map (M),
 │                             live settings via localStorage (SET + storage events).
-│                             Pure generator block (OFFICE-GEN-BEGIN/END): 40x40-tile
+│                             Pure generator block (OFFICE-GEN-BEGIN/END) is transpiled
+│                             from src/web/maze/office-gen.ts: 40x40-tile
 │                             super-cells, corridor bands (5-wide mains / 3-wide sides),
 │                             BSP offices / open-plan halls / atriums, doorways, A* +
-│                             string-pull autopilot, hash-based mail spots. Tests extract
-│                             this block verbatim (tests/office.test.ts).
+│                             string-pull autopilot, hash-based mail spots. Tests import
+│                             the TS module directly (tests/office.test.ts).
+├── scripts/
+│   └── build-maze.ts         transpiles office-gen.ts → injects into mail-maze.html
+│                             (`bun run build:maze`, `--check` for CI drift detection)
 ├── tests/
 │   └── classifier.test.ts    6 seed cases + noreply-bank safety regression (bun:test)
-│   └── office.test.ts        office generator: determinism, corridor seams, room sizes,
+│   └── office.test.ts        office generator (imports src/web/maze/office-gen.ts directly):
+│                             determinism, corridor seams, room sizes,
 │                             per-super-cell doors, 5x5 flood-fill connectivity (several
 │                             seeds), mail placement, A* + string-pull (bun:test)
 │   └── mazeServer.test.ts    /api/trash + /api/undo guards: non-candidate/confirm/token/stale (bun:test)

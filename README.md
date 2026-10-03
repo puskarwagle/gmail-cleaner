@@ -138,6 +138,7 @@ falls back to built-in demo data when `/api/report` is unreachable.
 ```bash
 bun test          # classifier unit tests (tests/)
 bun run dev -- …  # CLI (scan | report | trash | undo)
+bun run build:maze # rebuild mail-maze.html from src/web/maze/office-gen.ts
 bunx tsc --noEmit # typecheck
 ```
 
