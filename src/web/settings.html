@@ -54,6 +54,7 @@ button.danger{background:transparent;border:1px solid #e0605f;color:#e0605f;bord
 <label><b>Turn speed</b> <span class="v" id="v-turn"></span><input type="range" id="s-turn" min="1" max="5" step="0.1"></label>
 <label><b>Swipe sensitivity</b> <span class="v" id="v-sens"></span><input type="range" id="s-sens" min="0.3" max="3" step="0.1"></label>
 <label><input type="checkbox" id="s-flip"> <b>Invert swipe direction</b> (for flipped scroll-direction setups)</label>
+<label><input type="checkbox" id="s-sound"> <b>Sound effects</b> (pickup blips, chimes, clear fanfare)</label>
 <label><b>Auto-walk speed</b> <span class="v" id="v-auto"></span><input type="range" id="s-auto" min="0.4" max="1.2" step="0.05"></label>
 <label><b>Render quality</b><select id="s-quality"><option value="0.5">0.5× — fastest</option><option value="0.75">0.75×</option><option value="1">1× — sharpest</option></select></label>
 <label><b>Envelope density</b> <span class="v" id="v-density"></span><input type="range" id="s-density" min="0" max="20" step="1"></label>
@@ -95,7 +96,7 @@ $('t1').setAttribute('aria-selected',n==1);$('t2').setAttribute('aria-selected',
 $('p1').classList.toggle('hidden',n!=1);$('p2').classList.toggle('hidden',n!=2)}
 // ---- Maze UI settings (localStorage, shared live with the maze tab) ----
 const KEY='mailmaze.settings.v1';
-const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
+const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false,sound:true};
 function cur(){let s={};try{s=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}return{...DEF,...s}}
 function paint(){const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
 if(el.type=='checkbox')el.checked=!!s[k];else el.value=s[k];const v=$('v-'+k);if(v)v.textContent=s[k]}}

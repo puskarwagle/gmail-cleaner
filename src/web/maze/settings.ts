@@ -16,6 +16,7 @@ export interface MazeSettings {
   mapSize: number;
   mapRange: number;
   flip: boolean;
+  sound: boolean;
 }
 
 export const SKEY = "mailmaze.settings.v1";
@@ -33,6 +34,7 @@ export const SDEF: MazeSettings = {
   mapSize: 148,
   mapRange: 24,
   flip: false,
+  sound: true,
 };
 
 /** Live settings object. Mutated in place so ES-module live bindings stay valid. */
