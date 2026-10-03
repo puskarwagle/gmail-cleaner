@@ -2,7 +2,7 @@
  * Game state: player, queue, autopilot, mail assignment, live-report sync.
  * Imports world + hud (toast only); render.ts and main.ts read this state.
  */
-import { H2, RNG, SUPER, T_FLOOR, astar, mailSpots, pull, type SuperCell } from "./office-gen.ts";
+import { H2, RNG, SUPER, T_FLOOR, astar, losClear, mailSpots, pull, type SuperCell } from "./office-gen.ts";
 import { SET } from "./settings.ts";
 import { toast } from "./hud.ts";
 import type { World } from "./world.ts";
@@ -70,6 +70,23 @@ export function hdrs(): Record<string, string> {
   return t ? { "Content-Type": "application/json", "x-maze-token": t } : { "Content-Type": "application/json" };
 }
 
+export interface NearestMail {
+  key: string;
+  x: number;
+  y: number;
+  dist: number;
+  mail: MailItem;
+}
+
+function nowMs(): number {
+  try {
+    if (typeof performance !== "undefined" && performance.now) return performance.now();
+  } catch {
+    // non-DOM (tests)
+  }
+  return Date.now();
+}
+
 export class Game {
   seed = (Math.random() * 1e9) | 0;
   world: World;
@@ -103,6 +120,23 @@ export class Game {
   SHUFI = 0;
   INCLEAR = false;
   ASG = new Map<string, MailItem | null>();
+
+  /** Recent pickups for the pop animation (render.ts drains by age). */
+  fx: Array<{ t0: number; label: string; color: string; prot: boolean }> = [];
+  /** Set once the player dismisses the inbox-clear overlay for this report. */
+  DONEACK = false;
+  /** Mail tile key the autopilot is currently hunting (drives stuck logic). */
+  autoKey: string | null = null;
+  lastStuckKey: string | null = null;
+  stuckCount = 0;
+  /** Tile keys that beat the autopilot twice: ignored for 20 s so it moves on. */
+  blacklist = new Map<string, number>();
+  /** Sticky close-range hunt target: validated cheaply each frame, re-acquired on demand. */
+  huntKey: string | null = null;
+  huntX = 0;
+  huntY = 0;
+  /** Nearest-mail snapshot refreshed by main.ts (~8 Hz) for the compass + guide marker. */
+  guide: NearestMail | null = null;
 
   constructor(world: World) {
     this.world = world;
@@ -160,6 +194,177 @@ export class Game {
     return !this.world.wall(Math.floor(wx), Math.floor(wy));
   }
 
+  /**
+   * Guidance target for the compass + follow-the-dot marker. Same candidate
+   * pool as the planner, but scored by distance *and* viewing angle: the mail
+   * you are already facing wins over a slightly nearer one behind you through
+   * a wall. Small hysteresis keeps the marker from flickering between two
+   * equidistant targets. The autopilot planner deliberately keeps using pure
+   * distance (it paths there anyway).
+   */
+  nearestMail(maxDist = 70): NearestMail | null {
+    const list = this.collectMailTargets(maxDist, 8);
+    if (!list.length) return null;
+    let best = list[0],
+      bs = Infinity;
+    for (const t of list) {
+      let rel = Math.atan2(t.y - this.py, t.x - this.px) - this.ang;
+      rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      let s = t.dist + 8 * Math.abs(rel) + (t.mail.p ? 8 : 0);
+      if (this.guide && this.guide.key === t.key && !this.done.has(t.key)) s -= 4;
+      if (s < bs) {
+        bs = s;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /** Up to `limit` uncollected mail targets, nearest-first (trashable preferred). */
+  collectMailTargets(maxDist = 65, limit = 8): NearestMail[] {
+    const out: NearestMail[] = [];
+    const psx = Math.floor(this.px / SUPER),
+      psy = Math.floor(this.py / SUPER);
+    const sr = Math.min(3, Math.ceil(maxDist / SUPER) + 1);
+    for (let sy = psy - sr; sy <= psy + sr; sy++)
+      for (let sx = psx - sr; sx <= psx + sr; sx++) {
+        let c;
+        try {
+          c = this.world.getSuper(sx, sy);
+        } catch {
+          continue;
+        }
+        let spots: Set<string>;
+        try {
+          spots = this.world.superSpots(c);
+        } catch {
+          continue;
+        }
+        for (const key of spots) {
+          if (this.done.has(key) || this.kp.has(key)) continue;
+          const ci = key.indexOf(",");
+          const tx = +key.slice(0, ci),
+            ty = +key.slice(ci + 1);
+          const dx = tx + 0.5 - this.px,
+            dy = ty + 0.5 - this.py;
+          const dist = Math.hypot(dx, dy);
+          if (dist > maxDist || dist < 0.9) continue;
+          let m: MailItem | null;
+          try {
+            m = this.mail(tx, ty);
+          } catch {
+            continue;
+          }
+          if (!m) continue;
+          out.push({ key, x: tx + 0.5, y: ty + 0.5, dist, mail: m });
+        }
+      }
+    out.sort((a, b) => a.dist + (a.mail.p ? 8 : 0) - (b.dist + (b.mail.p ? 8 : 0)));
+    return out.slice(0, limit);
+  }
+
+  /**
+   * Stuck bookkeeping: replans, and blacklists the hunted mail tile for 20 s
+   * after it beats the autopilot twice in a row so it moves on instead of
+   * looping into the same wall forever.
+   */
+  noteStuck(): void {
+    const k = this.autoKey;
+    if (k && k === this.lastStuckKey) this.stuckCount++;
+    else {
+      this.stuckCount = 1;
+      this.lastStuckKey = k;
+    }
+    if (k && this.stuckCount >= 2) {
+      this.blacklist.set(k, nowMs() + 20000);
+      this.stuckCount = 0;
+    }
+    this.path = null;
+    this.planAuto();
+    this.stuckT = 0;
+    this.stuckX = this.px;
+    this.stuckY = this.py;
+  }
+
+  /** Revalidate the sticky hunt target without a full spot scan. */
+  validateHunt(): NearestMail | null {
+    const hk = this.huntKey;
+    if (!hk || this.done.has(hk) || this.kp.has(hk)) {
+      this.huntKey = null;
+      return null;
+    }
+    const exp = this.blacklist.get(hk);
+    if (exp !== undefined && exp > nowMs()) {
+      this.huntKey = null;
+      return null;
+    }
+    const dx = this.huntX - this.px,
+      dy = this.huntY - this.py,
+      dist = Math.hypot(dx, dy);
+    if (dist > 12 || dist < 0.5) {
+      if (dist > 12) this.huntKey = null;
+      return null;
+    }
+    try {
+      if (!losClear((x, y) => this.walkW(x, y), this.px, this.py, this.huntX, this.huntY)) {
+        this.huntKey = null;
+        return null;
+      }
+    } catch {
+      return null;
+    }
+    const ci = hk.indexOf(","),
+      tx = +hk.slice(0, ci),
+      ty = +hk.slice(ci + 1);
+    let m: MailItem | null = null;
+    try {
+      m = this.mail(tx, ty);
+    } catch {
+      return null;
+    }
+    if (!m) {
+      this.huntKey = null;
+      return null;
+    }
+    return { key: hk, x: this.huntX, y: this.huntY, dist, mail: m };
+  }
+
+  /** Nearest unblacklisted mail within maxDist that has clear walking LOS. */
+  directMail(maxDist = 9): NearestMail | null {
+    let cands: NearestMail[];
+    try {
+      cands = this.collectMailTargets(maxDist, 3);
+    } catch {
+      return null;
+    }
+    const now = nowMs();
+    for (const c of cands) {
+      const exp = this.blacklist.get(c.key);
+      if (exp !== undefined && exp > now) continue;
+      try {
+        if (losClear((x, y) => this.walkW(x, y), this.px, this.py, c.x, c.y)) return c;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+  /** Live-report progress for the inbox-clear overlay. Null totals = demo mode. */
+  progress(): { total: number | null; trashTotal: number | null; gathered: number; kept: number; done: boolean } {
+    if (!this.MSGS || !this.MSGS.length) return { total: null, trashTotal: null, gathered: 0, kept: this.KP, done: false };
+    const total = this.MSGS.length;
+    let trashTotal = 0;
+    for (const m of this.MSGS) if (m.trashCandidate) trashTotal++;
+    const gathered = this.Q.length + this.T;
+    const done = trashTotal > 0 ? gathered >= trashTotal : this.KP >= total;
+    return { total, trashTotal, gathered, kept: this.KP, done };
+  }
+
+  pushFx(label: string, color: string, prot: boolean): void {
+    this.fx.push({ t0: nowMs(), label, color, prot });
+    if (this.fx.length > 6) this.fx.splice(0, this.fx.length - 6);
+  }
+
   hit(x: number, y: number, r: number): boolean {
     return (
       this.world.wall(Math.floor(x - r), Math.floor(y - r)) ||
@@ -174,6 +379,43 @@ export class Game {
       x0 = Math.floor(this.px) - 64,
       y0 = Math.floor(this.py) - 64;
     const walk = (x: number, y: number): boolean => !this.world.wall(x0 + x, y0 + y);
+    const now = nowMs();
+    for (const [k, exp] of this.blacklist) if (exp <= now) this.blacklist.delete(k);
+    const tryTarget = (wx: number, wy: number, key: string | null): boolean => {
+      const gx = Math.floor(wx) - x0,
+        gy = Math.floor(wy) - y0;
+      if (gx < 1 || gy < 1 || gx >= PW - 1 || gy >= PW - 1) return false;
+      const sxc = Math.floor(this.px) - x0,
+        syc = Math.floor(this.py) - y0;
+      let p = astar(PW, PW, walk, sxc, syc, gx, gy);
+      if (!p || !p.length) return false;
+      const world = this;
+      p = p.map((q) => [x0 + q[0] + 0.5, y0 + q[1] + 0.5]);
+      p = (pull((x, y) => world.walkW(x, y), p) || p) as number[][];
+      this.path = p;
+      this.followI = 0;
+      this.stuckT = 0;
+      this.stuckX = this.px;
+      this.stuckY = this.py;
+      this.autoKey = key;
+      this.recentT.push([wx, wy]);
+      if (this.recentT.length > 5) this.recentT.shift();
+      return true;
+    };
+    // Prefer real mail: head for the nearest uncollected envelopes first so
+    // auto-walk actually cleans the inbox instead of wandering rooms.
+    // Close mail is NOT skipped: wandering off when 1 m away was a real bug.
+    try {
+      const mails = this.collectMailTargets(65, 4);
+      for (const m of mails) {
+        if (m.dist < 0.5) continue;
+        const exp = this.blacklist.get(m.key);
+        if (exp !== undefined && exp > now) continue;
+        if (tryTarget(m.x, m.y, m.key)) return;
+      }
+    } catch {
+      // fall through to wandering
+    }
     const cand: number[][] = [];
     const psx = Math.floor(this.px / SUPER),
       psy = Math.floor(this.py / SUPER);
@@ -240,6 +482,7 @@ export class Game {
     this.stuckT = 0;
     this.stuckX = this.px;
     this.stuckY = this.py;
+    this.autoKey = null;
     this.recentT.push(tgt);
     if (this.recentT.length > 5) this.recentT.shift();
   }
@@ -254,7 +497,12 @@ export class Game {
     if (on) {
       this.path = null;
       this.planAuto();
-    } else this.path = null;
+    } else {
+      this.path = null;
+      this.autoKey = null;
+      this.huntKey = null;
+      this.stuckT = 0;
+    }
   }
 
   async loadReport(): Promise<void> {
@@ -274,8 +522,10 @@ export class Game {
         this.SHUF[k] = tmp;
       }
       this.SHUFI = 0;
+      this.DONEACK = false;
+      this.fx.length = 0;
       const ht = document.querySelector(".ht");
-      if (ht) ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · live inbox data";
+      if (ht) ht.textContent = "WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · B for big map · live inbox data";
       if (!msgs.length) toast("Report is empty — the maze stays walkable. Run scan again for fresh data.");
       else toast(msgs.length + " messages loaded — walk into envelopes to queue them. Gold ones are protected.");
     } catch {
@@ -291,32 +541,67 @@ export class Game {
     let tr = (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0) + clq(this.wx / 120);
     if (this.aw && (f || tr)) this.setAuto(false);
     if (this.aw) {
-      if (!this.path || this.followI >= this.path.length) {
-        if (performance.now() > this.planCoolUntil) this.planAuto();
+      // Close visible mail: drive straight at it every frame instead of
+      // following a stale A* path. The hunt target is sticky (cheap LOS
+      // revalidation); a full spot scan only runs to acquire a new one.
+      let direct: NearestMail | null = this.validateHunt();
+      if (!direct) {
+        direct = this.directMail(9);
+        if (direct) {
+          this.huntKey = direct.key;
+          this.huntX = direct.x;
+          this.huntY = direct.y;
+        }
       }
-      if (this.path && this.followI < this.path.length) {
-        const last = this.path[this.path.length - 1];
-        if (Math.hypot(last[0] - this.px, last[1] - this.py) < 1.2) this.planAuto();
-      }
-      if (this.path && this.followI < this.path.length) {
-        while (this.followI < this.path.length - 1 && Math.hypot(this.path[this.followI][0] - this.px, this.path[this.followI][1] - this.py) < 0.9)
-          this.followI++;
-        let li = this.followI;
-        while (li < this.path.length - 1 && Math.hypot(this.path[li][0] - this.px, this.path[li][1] - this.py) < 2.4) li++;
-        const des = Math.atan2(this.path[li][1] - this.py, this.path[li][0] - this.px);
+      if (direct) {
+        this.path = null;
+        this.autoKey = direct.key;
+        const des = Math.atan2(direct.y - this.py, direct.x - this.px);
         let da = des - this.ang;
         da = Math.atan2(Math.sin(da), Math.cos(da));
-        const mt = 3.2 * dt;
+        const mt = 4.5 * dt;
         this.ang += Math.max(-mt, Math.min(mt, da));
-        f = +SET.auto || 0.85;
+        const align = Math.abs(da);
+        const auto = +SET.auto || 0.85;
+        f = align > 1.1 ? 0 : auto * (1 - align / 1.1) * Math.max(0.3, Math.min(1, direct.dist / 3));
         this.stuckT += dt;
         if (this.stuckT > 2.5) {
-          if (Math.hypot(this.px - this.stuckX, this.py - this.stuckY) < 0.5) this.planAuto();
+          if (Math.hypot(this.px - this.stuckX, this.py - this.stuckY) < 0.5) this.noteStuck();
           this.stuckT = 0;
           this.stuckX = this.px;
           this.stuckY = this.py;
         }
-      } else f = 0.2;
+      } else {
+        if (!this.path || this.followI >= this.path.length) {
+          if (performance.now() > this.planCoolUntil) this.planAuto();
+        }
+        if (this.path && this.followI < this.path.length) {
+          const last = this.path[this.path.length - 1];
+          if (Math.hypot(last[0] - this.px, last[1] - this.py) < 1.2) this.planAuto();
+        }
+        if (this.path && this.followI < this.path.length) {
+          while (this.followI < this.path.length - 1 && Math.hypot(this.path[this.followI][0] - this.px, this.path[this.followI][1] - this.py) < 0.9)
+            this.followI++;
+          let li = this.followI;
+          while (li < this.path.length - 1 && Math.hypot(this.path[li][0] - this.px, this.path[li][1] - this.py) < 2.4) li++;
+          const des = Math.atan2(this.path[li][1] - this.py, this.path[li][0] - this.px);
+          let da = des - this.ang;
+          da = Math.atan2(Math.sin(da), Math.cos(da));
+          const mt = 4.0 * dt;
+          this.ang += Math.max(-mt, Math.min(mt, da));
+          // Don't charge forward while facing away: turn (nearly) in place
+          // until aligned. This is what stops the wall-banging arcs.
+          const align = Math.abs(da);
+          f = align > 1.2 ? 0 : (+SET.auto || 0.85) * (1 - align / 1.2);
+          this.stuckT += dt;
+          if (this.stuckT > 2.5) {
+            if (Math.hypot(this.px - this.stuckX, this.py - this.stuckY) < 0.5) this.noteStuck();
+            this.stuckT = 0;
+            this.stuckX = this.px;
+            this.stuckY = this.py;
+          }
+        } else f = 0.2;
+      }
     }
     f = Math.max(-1, Math.min(1, f));
     tr = Math.max(-1, Math.min(1, tr));
@@ -341,20 +626,22 @@ export class Game {
         const ex = cx + 0.5 - this.px,
           ey = cy + 0.5 - this.py;
         if (ex * ex + ey * ey > 0.64) continue;
-        if (m.p) {
-          if (!this.kp.has(key)) {
-            this.kp.add(key);
-            this.KP++;
-            toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
+          if (m.p) {
+            if (!this.kp.has(key)) {
+              this.kp.add(key);
+              this.KP++;
+              this.pushFx("Kept safe", "#e9c46a", true);
+              toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
+              onHud();
+            }
+          } else {
+            this.done.add(key);
+            m.key = key;
+            this.Q.push(m);
+            this.pushFx("Queued", m.c || "#fff", false);
+            toast("Queued: " + m.from + " · " + m.sub);
             onHud();
           }
-        } else {
-          this.done.add(key);
-          m.key = key;
-          this.Q.push(m);
-          toast("Queued: " + m.from + " · " + m.sub);
-          onHud();
-        }
       }
   }
 
