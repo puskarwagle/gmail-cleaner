@@ -73,14 +73,14 @@ function genSuper(sx,sy,seed){
   const roomMap=new Int16Array(N*N).fill(-1);
   const at=(x,y)=>y*N+x;
   for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(x<vw||y<hw)tiles[at(x,y)]=T_FLOOR;
-  const lobby=H2(sx,sy,101,seed)%7===0;
+  const lobby=H2(sx,sy,101,seed)%10===0;
   if(lobby){const L=Math.max(vw,hw)+2;for(let y=0;y<L;y++)for(let x=0;x<L;x++)tiles[at(x,y)]=T_FLOOR;}
   const gaps=new Set();
   const gk=(lx,ly)=>(sx*N+lx)+','+(sy*N+ly);
   const ix0=vw+1,iy0=hw+1;
   const rng=RNG(H2(sx,sy,7,seed));
   const pick=H2(sx,sy,8,seed)%100;
-  const mode=pick<60?'off':(pick<85?'open':'atrium');
+  const mode=pick<75?'off':(pick<95?'open':'atrium');
   const leaves=[],splits=[];
   let cuts=0;
   function doorPos(a,b,dw){const lo=a+1,hi=b-dw-1;if(hi<=lo)return lo;return lo+Math.floor(rng()*(hi-lo+1));}
@@ -88,18 +88,18 @@ function genSuper(sx,sy,seed){
     const w=x1-x0,h=y1-y0,canV=w>=13,canH=h>=13;
     let stop;
     if(mode==='atrium')stop=true;
-    else if(mode==='open')stop=cuts>=2||((w<=18&&h<=18)&&rng()<0.6);
+    else if(mode==='open')stop=cuts>=4||((w<=16&&h<=16)&&rng()<0.6);
     else stop=w<=14&&h<=14;
     if((!canV&&!canH)||stop){leaves.push({x0,y0,x1,y1});return;}
     let v;
     if(canV&&canH)v=w>h?rng()<0.75:rng()<0.25;
     else v=canV;
     if(v){const p=(x0+6)+Math.floor(rng()*((x1-7)-(x0+6)+1));
-      const span=y1-y0,wdw=mode==='open'?Math.max(2,Math.min(8,span-2)):(2+(rng()<0.4?1:0));
+      const span=y1-y0,wdw=mode==='open'?Math.max(2,Math.min(4,span-2)):(2+(rng()<0.4?1:0));
       splits.push({v:1,p,a:y0,b:y1,dc:doorPos(y0,y1,wdw),dw:wdw});cuts++;
       rec(x0,y0,p,y1);rec(p+1,y0,x1,y1);
     }else{const p=(y0+6)+Math.floor(rng()*((y1-7)-(y0+6)+1));
-      const span=x1-x0,wdw=mode==='open'?Math.max(2,Math.min(8,span-2)):(2+(rng()<0.4?1:0));
+      const span=x1-x0,wdw=mode==='open'?Math.max(2,Math.min(4,span-2)):(2+(rng()<0.4?1:0));
       splits.push({v:0,p,a:x0,b:x1,dc:doorPos(x0,x1,wdw),dw:wdw});cuts++;
       rec(x0,y0,x1,p);rec(x0,p+1,x1,y1);
     }
@@ -151,12 +151,12 @@ function genSuper(sx,sy,seed){
   const withDoor=new Set();
   for(const o of touching){
     let n=0;
-    if(o.left&&rng()<0.7&&cdoorLeft(o.r)){n++;made++;}
-    if(o.top&&rng()<0.7&&cdoorTop(o.r)){n++;made++;}
+    if(o.left&&rng()<0.55&&cdoorLeft(o.r)){n++;made++;}
+    if(o.top&&rng()<0.55&&cdoorTop(o.r)){n++;made++;}
     if(n>0)withDoor.add(o.i);
   }
   if(made===0&&touching.length){const o=touching[Math.floor(rng()*touching.length)];if(o.left)cdoorLeft(o.r);else cdoorTop(o.r);made++;}
-  for(const o of touching){if(withDoor.has(o.i)&&rng()<0.25){if(o.left&&o.top){if(rng()<0.5)cdoorLeft(o.r);else cdoorTop(o.r);}else if(o.left)cdoorLeft(o.r);else cdoorTop(o.r);}}
+  for(const o of touching){if(withDoor.has(o.i)&&rng()<0.12){if(o.left&&o.top){if(rng()<0.5)cdoorLeft(o.r);else cdoorTop(o.r);}else if(o.left)cdoorLeft(o.r);else cdoorTop(o.r);}}
   return {sx,sy,vw,hw,mode,lobby,tiles,roomMap,rooms,doors,gaps};
 }
 function buildArea(seed,x0,y0,w,h){
@@ -254,7 +254,7 @@ function mailSpots(sx,sy,seed,density){
 const CH=new Map();
 const cv=document.getElementById('cv'),g=cv.getContext('2d'),$=id=>document.getElementById(id);
 // Settings (/settings → Maze UI tab). Same-origin localStorage, applied live via storage events.
-const SKEY='mailmaze.settings.v1',SDEF={fov:1,move:3,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
+const SKEY='mailmaze.settings.v1',SDEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
 let SET={...SDEF};try{const s=JSON.parse(localStorage.getItem(SKEY));if(s&&typeof s=='object')SET={...SET,...s}}catch(e){}
 function saveSET(){try{localStorage.setItem(SKEY,JSON.stringify(SET))}catch(e){}}
 const THEMES=[[12,205,38],[190,230,320],[95,45,160],[0,0,0]];
@@ -440,7 +440,7 @@ if(aw){
 }
 f=Math.max(-1,Math.min(1,f));tr=Math.max(-1,Math.min(1,tr));
 const k=Math.min(1,dt*9);vf+=(f-vf)*k;vt+=(tr-vt)*k;ang+=vt*dt*(+SET.turn||2.4);
-const nx=px+Math.cos(ang)*vf*(+SET.move||3)*dt,ny=py+Math.sin(ang)*vf*(+SET.move||3)*dt;if(!hit(nx,py,.3))px=nx;if(!hit(px,ny,.3))py=ny;
+const nx=px+Math.cos(ang)*vf*(+SET.move||10)*dt,ny=py+Math.sin(ang)*vf*(+SET.move||10)*dt;if(!hit(nx,py,.3))px=nx;if(!hit(px,ny,.3))py=ny;
 const pcx=Math.floor(px),pcy=Math.floor(py);
 for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const cx=pcx+i,cy=pcy+j,m=mail(cx,cy),key=cx+','+cy;if(!m||done.has(key))continue;
 const ex=cx+0.5-px,ey=cy+0.5-py;if(ex*ex+ey*ey>.64)continue;
