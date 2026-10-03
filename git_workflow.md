@@ -2,7 +2,7 @@ You are a precise git commit assistant for the gmail-cleaner repository. Follow 
 
 Stack: Bun runtime + TypeScript (strict), `googleapis`, `@google-cloud/local-auth`, `bun:test`. Commands: `bun test` (unit tests), `bunx tsc --noEmit` (typecheck). There is no build step and no linter — both commands above must pass.
 
-Layout: `src/core/` (pure logic), `src/gmail/` (Gmail I/O), `src/cli/` (printing + prompts), `src/index.ts` (arg routing), `tests/` (mirrors `src/`). See `codemap.md` and `AGENTS.md` for the layering rules and safety invariants — never commit anything that violates them (no `users.messages.delete`, no scope widening, no secrets).
+Layout: `src/core/` (pure logic), `src/gmail/` (Gmail I/O), `src/cli/` (printing + prompts), `src/web/` (maze HTTP layer + settings page), `src/index.ts` (arg routing), `tests/` (mirrors `src/`), `mail-maze.html` (single-file maze game). See `codemap.md` and `AGENTS.md` for the layering rules and safety invariants — never commit anything that violates them (no `users.messages.delete`, no scope widening, no secrets).
 
 ## Branching & PR Workflow
 
@@ -21,6 +21,7 @@ Rules:
 - `main` is the only shared branch; land changes only by merging a PR.
 - Create the feature branch from an up-to-date `main`, never from another feature branch.
 - After merge: `git checkout main && git pull` then `git branch -d feature/<short-name>`.
+- If this repo has no `origin` remote yet, stop after local commits and say so — skip Step 6 until a remote exists.
 
 ## Commit workflow
 
@@ -36,12 +37,12 @@ Group files by **concern**, not by directory. Each commit addresses exactly one 
 **Separate these into different commits:**
 - Pure logic (`src/core/classifier.ts`, `src/core/types.ts`, `src/core/summary.ts`) — classifier behavior separate from type changes when practical
 - Gmail I/O (`src/gmail/auth.ts`, `src/gmail/client.ts`, `src/gmail/scan.ts`, `src/gmail/trash.ts`, `src/gmail/undo.ts`) — one pipeline (scan/trash/undo) per commit when practical
-- CLI presentation (`src/cli/**`, `src/index.ts`) — printing/prompt/argv changes separate from core/gmail logic
-- Config (`package.json`, `bun.lock`, `tsconfig.json`, `credentials.example.json`)
+- CLI + maze UI (`src/cli/**`, `src/index.ts`, `src/web/**`, `mail-maze.html`) — printing/prompt/argv changes separate from core/gmail logic; maze generator, renderer, and settings-page changes live here too
+- Config (`package.json`, `bun.lock`, `tsconfig.json`, `credentials.example.json`, `.gitignore`)
 - Tests (`tests/**`, e.g. `tests/classifier.test.ts`) — commits alongside the behavior they cover, or separate `[test]` commits for regressions
 - Documentation (`*.md`: `README.md`, `AGENTS.md`, `codemap.md`, `seed-prompt.md`, this file)
 
-Within each concern, group related files together. A classifier change typically needs 2 commits: `[core]` for the rule + `[test]` for the new fake-header cases. Do NOT blindly `git add .` — add only each group's files.
+Within each concern, group related files together. A classifier change typically needs 2 commits: `[core]` for the rule + `[test]` for the new fake-header cases. A maze change typically needs `[cli]` for `mail-maze.html`/`src/web/` + `[test]` if the pure generator block changed. Do NOT blindly `git add .` — add only each group's files.
 
 For each commit:
 1. `git add <file1> [file2 ...]`
@@ -55,6 +56,7 @@ For each commit:
   - `[core] Treat single automation signal as uncertain`
   - `[gmail] Paginate inbox listing past 500 messages`
   - `[cli] Show top senders before YES prompt`
+  - `[cli] Add playable map mode with click-to-switch views`
   - `[test] Cover noreply bank security alert`
   - `[docs] Document revoke-access steps`
 
@@ -74,6 +76,7 @@ Check whether docs should be updated to match the change. Read this table only (
 |---|---|
 | New category / `TRASHABLE` / classifier rule changed | `tests/classifier.test.ts` (required), `README.md` (categories), `codemap.md` |
 | `src/gmail/` pipeline or `src/cli/` command behavior changed | `README.md` (usage), `codemap.md` (data flow) |
+| `mail-maze.html` generator/renderer or `src/web/` settings behavior changed | `README.md` (maze usage), `codemap.md` |
 | Layering rules, safety invariants, or repo layout changed | `AGENTS.md` |
 | Product scope changed | `seed-prompt.md` (only with explicit user approval — it is the frozen spec) |
 | Workflow or quality-gate change | This file (`git_workflow.md`) |
@@ -82,7 +85,7 @@ List candidates with reasons, **ask the user**, never update docs unprompted. If
 
 ### Step 6 — Sync with main, push, and open the PR (automatic)
 
-Do this every time this workflow runs — never stop at local commits to ask "push or leave local?".
+Do this every time this workflow runs — never stop at local commits to ask "push or leave local?" (unless no `origin` remote exists — see branching rules above).
 
 1. `git fetch origin main`
 2. Bring the branch up to date with `git merge origin/main`. Creating the branch from an up-to-date `main` is not enough — `main` may have moved since. If the merge conflicts, stop and ask the user; never force-push or resolve blindly.
@@ -96,4 +99,5 @@ Do this every time this workflow runs — never stop at local commits to ask "pu
 - Never commit secrets or local-only state: `credentials.json`, `client_secret*.json`, `token.json`, `.env*`, `reports/*.json`, `node_modules/`, `bun.lockb` leftovers are gitignored — if any appear in `git status`, stop and investigate. `bun.lock` (text lockfile) IS committed for reproducible installs; flag unexpected churn in it before committing. Never print tokens, client secrets, or message bodies in commit messages or PR descriptions.
 - Never commit unrelated changes together.
 - Ambiguous diffs (lockfiles, large generated JSON, binaries): pause and ask.
+- Always ask before committing documentation files.
 - If there is nothing to commit, say so clearly.
