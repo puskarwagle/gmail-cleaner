@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mail Maze — Settings</title>
+<style>
+:root{--ink:#eef2f5;--mut:#b4bec9;--pn:rgba(10,14,19,.85);--ac:#2fb5a8;--card:#11161d;--line:rgba(128,128,128,.35)}
+html,body{margin:0}
+body{background:#05080c;color:var(--ink);font:14px system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:640px;margin:0 auto;padding:24px 16px 64px}
+a{color:var(--ac)}
+h1{font-size:22px;margin:8px 0 4px}
+.sub{color:var(--mut);margin:0 0 20px;line-height:1.5}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tabs button{flex:1;height:44px;border-radius:10px;border:1px solid var(--line);background:transparent;color:inherit;font:600 14px system-ui,sans-serif;cursor:pointer}
+.tabs button.on{background:var(--ac);border-color:var(--ac);color:#04201d}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 4px}
+.card p{color:var(--mut);line-height:1.5;margin:0 0 16px}
+label{display:block;font-size:13px;margin:14px 0 4px}
+label b{font-weight:600}
+label .v{color:var(--ac);font-family:monospace}
+input[type=text],input[type=password],select{width:100%;box-sizing:border-box;height:44px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:#05080c;color:inherit;font-size:14px}
+input[type=range]{width:100%;accent-color:var(--ac)}
+input[type=file]{margin:8px 0}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--ac);vertical-align:middle}
+.row{display:flex;gap:12px;margin-top:20px}
+button.pri{background:var(--ac);border:1px solid var(--ac);color:#04201d;border-radius:10px;height:44px;padding:0 20px;font:600 14px system-ui,sans-serif;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:inherit;border-radius:10px;height:44px;padding:0 20px;font:500 14px system-ui,sans-serif;cursor:pointer}
+button.danger{background:transparent;border:1px solid #e0605f;color:#e0605f;border-radius:10px;height:44px;padding:0 20px;font:500 14px system-ui,sans-serif;cursor:pointer}
+#msg{min-height:22px;margin-top:12px;font-size:13px}
+#msg.ok{color:var(--ac)}#msg.err{color:#e0605f}
+.status{font-family:monospace;font-size:13px;background:#05080c;border:1px solid var(--line);border-radius:8px;padding:12px 14px;line-height:1.8}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a id="back" href="/">← Back to the maze</a>
+<h1>Settings</h1>
+<p class="sub">Maze visuals apply instantly to the open maze tab. Gmail credentials are stored locally as <code>credentials.json</code> (mode 0600) and never leave this machine.</p>
+<div class="tabs" role="tablist">
+<button id="t1" class="on" role="tab" aria-selected="true">Maze UI</button>
+<button id="t2" role="tab" aria-selected="false">Gmail API</button>
+</div>
+
+<section id="p1" role="tabpanel">
+<div class="card">
+<h2>Maze UI</h2>
+<p>Stored in this browser only (localStorage). Applies live — keep the maze open in another tab and tweak away.</p>
+<label><b>Field of view</b> <span class="v" id="v-fov"></span><input type="range" id="s-fov" min="0.6" max="1.4" step="0.05"></label>
+<label><b>Walk speed</b> <span class="v" id="v-move"></span><input type="range" id="s-move" min="1" max="5" step="0.1"></label>
+<label><b>Turn speed</b> <span class="v" id="v-turn"></span><input type="range" id="s-turn" min="1" max="5" step="0.1"></label>
+<label><b>Swipe sensitivity</b> <span class="v" id="v-sens"></span><input type="range" id="s-sens" min="0.3" max="3" step="0.1"></label>
+<label><input type="checkbox" id="s-flip"> <b>Invert swipe direction</b> (for flipped scroll-direction setups)</label>
+<label><b>Auto-walk speed</b> <span class="v" id="v-auto"></span><input type="range" id="s-auto" min="0.4" max="1.2" step="0.05"></label>
+<label><b>Render quality</b><select id="s-quality"><option value="0.5">0.5× — fastest</option><option value="0.75">0.75×</option><option value="1">1× — sharpest</option></select></label>
+<label><b>Envelope density</b> <span class="v" id="v-density"></span><input type="range" id="s-density" min="0" max="20" step="1"></label>
+<label><b>Wall theme</b><select id="s-theme"><option value="0">Ember</option><option value="1">Lagoon</option><option value="2">Moss</option><option value="3">Mono</option></select></label>
+<label><input type="checkbox" id="s-minimap"> <b>Bird's-eye map</b> (toggle in-game with <code>M</code>)</label>
+<label><b>Map size</b> <span class="v" id="v-mapSize"></span><input type="range" id="s-mapSize" min="96" max="220" step="4"></label>
+<label><b>Map range</b> <span class="v" id="v-mapRange"></span><input type="range" id="s-mapRange" min="12" max="40" step="1"></label>
+<div class="row"><button class="pri" id="saveMaze">Save</button><button class="ghost" id="resetMaze">Reset defaults</button></div>
+<div id="msg"></div>
+</div>
+</section>
+
+<section id="p2" role="tabpanel" class="hidden">
+<div class="card">
+<h2>Gmail API credentials</h2>
+<p>Create an OAuth client (Desktop app) in Google Cloud Console, then either upload its JSON file or paste the fields. Saving overwrites local <code>credentials.json</code>. First Gmail access still happens via <code>scan</code>, which opens the Google consent screen.</p>
+<div class="status" id="status">Loading status…</div>
+<label><b>Upload credentials.json</b><input type="file" id="up" accept="application/json,.json"></label>
+<div class="status hidden" id="parsed"></div>
+<label><b>Client type</b><select id="g-kind"><option value="installed">installed — Desktop app (recommended)</option><option value="web">web — Web application</option></select></label>
+<label><b>Client ID</b><input type="text" id="g-id" autocomplete="off" spellcheck="false" placeholder="….apps.googleusercontent.com"></label>
+<label><b>Client secret</b><input type="password" id="g-secret" autocomplete="off" placeholder="••••••••"></label>
+<label><b>Redirect URI</b><input type="text" id="g-redir" autocomplete="off" spellcheck="false" value="http://localhost"></label>
+<label><b>Project ID (optional)</b><input type="text" id="g-proj" autocomplete="off" spellcheck="false"></label>
+<div class="row"><button class="pri" id="saveGmail">Save credentials</button><button class="danger" id="revoke">Revoke token</button></div>
+<div id="msg2"></div>
+</div>
+</section>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const tok=()=>{try{return new URLSearchParams(location.search).get('token')||''}catch(e){return''}};
+const T=tok(),H=()=>({'Content-Type':'application/json','x-maze-token':T});
+$('back').href='/?token='+encodeURIComponent(T);
+// Tabs
+$('t1').onclick=()=>{setTab(1)};$('t2').onclick=()=>{setTab(2)};
+function setTab(n){$('t1').classList.toggle('on',n==1);$('t2').classList.toggle('on',n==2);
+$('t1').setAttribute('aria-selected',n==1);$('t2').setAttribute('aria-selected',n==2);
+$('p1').classList.toggle('hidden',n!=1);$('p2').classList.toggle('hidden',n!=2)}
+// ---- Maze UI settings (localStorage, shared live with the maze tab) ----
+const KEY='mailmaze.settings.v1';
+const DEF={fov:1,move:3,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
+function cur(){let s={};try{s=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}return{...DEF,...s}}
+function paint(){const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
+if(el.type=='checkbox')el.checked=!!s[k];else el.value=s[k];const v=$('v-'+k);if(v)v.textContent=s[k]}}
+for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el||el.type=='checkbox')continue;
+el.oninput=()=>{const v=$('v-'+k);if(v)v.textContent=el.value}}
+function say(m,ok){const e=$('msg');e.textContent=m;e.className=ok?'ok':'err'}
+$('saveMaze').onclick=()=>{const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);
+s[k]=el.type=='checkbox'?el.checked:(el.tagName=='SELECT'?+el.value:+el.value)}
+try{localStorage.setItem(KEY,JSON.stringify(s));paint();say('Saved — the open maze picks it up instantly.',1)}catch(e){say('Could not save: '+e,0)}};
+$('resetMaze').onclick=()=>{try{localStorage.setItem(KEY,JSON.stringify(DEF));paint();say('Defaults restored.',1)}catch(e){say('Could not reset: '+e,0)}};
+paint();
+// ---- Gmail API form (server-backed) ----
+function say2(m,ok){const e=$('msg2');e.textContent=m;e.className=ok?'ok':'err'}
+let uploaded=null;
+async function status(){try{const r=await fetch('api/config',{headers:{'x-maze-token':T}});
+if(!r.ok)throw new Error('status '+r.status);const j=await r.json();
+$('status').textContent='credentials.json: '+(j.hasCredentials?('present ('+j.credentialsKind+')'):'missing')+' · token.json: '+(j.hasToken?('present, saved '+j.tokenUpdatedAt):'missing — next scan will open the Google consent screen')}catch(e){$('status').textContent='Status unavailable: '+e}}
+$('up').onchange=()=>{uploaded=null;$('parsed').classList.add('hidden');const f=$('up').files[0];if(!f)return;
+const rd=new FileReader();rd.onload=()=>{try{const j=JSON.parse(rd.result);uploaded=j;
+const kind=j.installed?'installed':(j.web?'web':null);
+if(!kind)throw new Error('no installed/web client found');
+$('parsed').classList.remove('hidden');$('parsed').textContent='Parsed OK: '+kind+' client. Nothing saved yet — press Save credentials.';
+if(kind)$('g-kind').value=kind;say2('',1)}catch(e){say2('Invalid JSON file: '+e.message,0)}};rd.readAsText(f)};
+function fillFromUpload(){const t=$('g-kind').value;const src=uploaded&&(uploaded[t]||uploaded.installed||uploaded.web);
+if(src){if(src.client_id)$('g-id').value=src.client_id;if(src.client_secret)$('g-secret').value='';
+if(src.redirect_uris&&src.redirect_uris[0])$('g-redir').value=src.redirect_uris[0];
+if(src.project_id)$('g-proj').value=src.project_id}}
+$('g-kind').onchange=fillFromUpload;
+$('saveGmail').onclick=async()=>{say2('',1);
+const payload=uploaded?{json:uploaded}:{kind:$('g-kind').value,clientId:$('g-id').value,clientSecret:$('g-secret').value,redirectUri:$('g-redir').value,projectId:$('g-proj').value};
+try{const r=await fetch('api/config/credentials',{method:'POST',headers:H(),body:JSON.stringify(payload)});
+const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||('Save failed ('+r.status+')'));
+uploaded=null;$('up').value='';$('parsed').classList.add('hidden');
+say2('Saved '+j.kind+' credentials to credentials.json (mode 0600).',1);status()}catch(e){say2(String((e&&e.message)||e),0)}};
+$('revoke').onclick=async()=>{try{const r=await fetch('api/config/revoke',{method:'POST',headers:H(),body:'{}'});
+const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||('Revoke failed ('+r.status+')'));
+say2('Local token deleted. Next Gmail access will ask for consent again.',1);status()}catch(e){say2(String((e&&e.message)||e),0)}};
+status();
+</script>
+</body>
+</html>
