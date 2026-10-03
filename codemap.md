@@ -29,6 +29,10 @@ gmail-cleaner/
 │   │       └── office-gen.ts   pure office generator (SUPER/genSuper/buildArea/astar/
 │   │                             losClear/pull/mailSpots); single source of truth for
 │   │                             the html block below
+│   │       └── game.ts         player/queue state + autopilot (mail-seeking A*,
+│   │                             LOS direct-homing <9 m, alignment-scaled drive,
+│   │                             stuck blacklist, inbox-clear progress)
+│   │       └── render.ts       raycaster + envelopes + minimap/big-map + fx pops
 │   └── cli/                  presentation only (may print / read stdin / open browser)
 │       ├── scanCommand.ts    → runScan + printSummary
 │       ├── reportCommand.ts  → loadLatestReport + printSummary + printProposedActions
@@ -39,6 +43,9 @@ gmail-cleaner/
 ├── mail-maze.html            single-file OFFICE FLOOR game (GENERATED — do not hand-edit;
 │                             run `bun run build:maze`); live mode via /api/report (token header),
 │                             demo fallback when opened via file://; bird's-eye map (M),
+│                             fullscreen big map (B, radius 60), nearest-mail compass
+│                             + mail-seeking autopilot, pickup pops + stat bump,
+│                             inbox-clear overlay (live progress),
 │                             live settings via localStorage (SET + storage events).
 │                             Pure generator block (OFFICE-GEN-BEGIN/END) is transpiled
 │                             from src/web/maze/office-gen.ts: 40x40-tile
