@@ -90,8 +90,18 @@ lazily from a random seed per session. The status bar shows live fps.
 - Walk into envelopes to queue them. Trash candidates are normal envelopes;
   protected mail (receipts, security, personal, uncertain) is gold with a
   lock and can never be collected.
-- Press `M` (or the **Map** button) for a bird's-eye view: walls, nearby
-  envelopes (gold = protected) and your heading around your position.
+- Press `M` (or the **Map** button) for a bird's-eye view: walls, envelopes
+  across the whole visible range (circle = trashable, gold square = protected)
+  and your heading around your position. Press `B` (or **Big map**) for a
+  fullscreen radius-60 version; `B`/`Esc` closes it.
+- A compass pill and an on-screen dot point at the nearest uncollected mail
+  with its distance, so you always know which way to turn.
+- **Auto-walk** (`Space` or the button) seeks real mail: it paths to the
+  nearest uncollected envelope, drives straight at anything in clear sight,
+  and ignores a spot for 20 s after getting stuck on it twice instead of
+  looping into the same wall.
+- Gathering every trashable message raises an **Inbox clear** overlay with
+  live progress (dismiss with **Keep walking** or go straight to review).
 - **Review queue** opens the typed-`YES` dialog; confirming POSTs the queued
   IDs to the server, which re-reads `reports/latest.json` and rejects the
   whole request if any ID is not a trash candidate. Success/failure counts
