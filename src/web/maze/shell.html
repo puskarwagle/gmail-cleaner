@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mail Maze — Office Floor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<style>
+/*MAZE-CSS*/
+</style>
+</head>
+<body>
+<canvas id="cv" aria-label="First-person view of an endless office floor"></canvas>
+<canvas id="mm" width="148" height="148" aria-label="Bird's-eye view of the office floor"></canvas>
+<div id="hud">
+<div class="r1"><div class="pn" id="st"></div><div class="g"><button id="ud" hidden="hidden">Undo last</button><button id="mp" aria-pressed="true" title="Toggle bird's-eye map (M)">Map</button><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
+<div class="r2"><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">WASD or arrows to walk · two-finger swipe to turn · Space for auto-walk · M for map · demo data</div></div>
+</div>
+<dialog id="dg">
+<h2>Move <span id="dn"></span> messages to Trash?</h2>
+<p>They stay in Gmail Trash for 30 days. Undo brings them back.</p>
+<div id="dl"></div>
+<label for="yes">Type YES to continue</label>
+<input id="yes" autocomplete="off" spellcheck="false">
+<div class="row"><button id="no">Cancel</button><button id="go" class="pri" disabled="disabled">Move to Trash</button></div>
+</dialog>
+<script>
+//MAZE-JS
+</script>
+</body>
+</html>
