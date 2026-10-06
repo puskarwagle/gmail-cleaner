@@ -12,6 +12,9 @@ export interface HudState {
   time: string;
   /** Live pickup-chain length; 0 hides it. */
   streak: number;
+  score: number;
+  /** Combo multiplier (1–5) from the current streak. */
+  mult: number;
 }
 
 /** 65000 → "1:05" (hours only appear past 60 min: "1:02:03"). */
@@ -73,7 +76,11 @@ export function updateCompass(t: CompassTarget | null): void {
 export function updateHud(s: HudState): void {
   const st = $("st");
   st.innerHTML =
-    "Queued <b>" +
+    "Score <b>" +
+    s.score +
+    "</b> · ×<b>" +
+    s.mult +
+    "</b> · Queued <b>" +
     s.queue +
     "</b> · Trashed <b>" +
     s.trashed +

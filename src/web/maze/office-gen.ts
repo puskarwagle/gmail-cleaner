@@ -477,6 +477,56 @@ export function pull(walkR: (x: number, y: number) => boolean, path: number[][] 
   return out;
 }
 
+export interface CastHit {
+  d: number;
+  side: number;
+  t: number;
+  mx: number;
+  my: number;
+}
+
+export function raycast(w: { wall(x: number, y: number): boolean }, px: number, py: number, dx: number, dy: number): CastHit {
+  if (!dx) dx = 1e-9;
+  if (!dy) dy = 1e-9;
+  let mx = Math.floor(px),
+    my = Math.floor(py);
+  const ax = Math.abs(1 / dx),
+    ay = Math.abs(1 / dy);
+  let sx: number, sy: number, qx: number, qy: number;
+  if (dx < 0) {
+    sx = -1;
+    qx = (px - mx) * ax;
+  } else {
+    sx = 1;
+    qx = (mx + 1 - px) * ax;
+  }
+  if (dy < 0) {
+    sy = -1;
+    qy = (py - my) * ay;
+  } else {
+    sy = 1;
+    qy = (my + 1 - py) * ay;
+  }
+  let side = 0;
+  for (let i = 0; i < 100; i++) {
+    if (qx < qy) {
+      qx += ax;
+      mx += sx;
+      side = 0;
+    } else {
+      qy += ay;
+      my += sy;
+      side = 1;
+    }
+    if (w.wall(mx, my)) {
+      const d = Math.max(0.05, side ? qy - ay : qx - ax),
+        w_val = side ? px + d * dx : py + d * dy;
+      return { d, side, t: w_val - Math.floor(w_val), mx, my };
+    }
+  }
+  return { d: 99, side: 0, t: 0, mx, my };
+}
+
 // Mail spots: per room + per corridor segment by hash, ~1 per 80 floor tiles
 // at density 7 (scaled by SET.density), never inside a doorway gap.
 export function mailSpots(sx: number, sy: number, seed: number, density: number): number[][] {

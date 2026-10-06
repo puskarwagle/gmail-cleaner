@@ -8,6 +8,7 @@ import { setTheme } from "./textures.ts";
 import { World } from "./world.ts";
 import { Game, hdrs, tok } from "./game.ts";
 import { fmtMs, toast, updateCompass, updateHud } from "./hud.ts";
+import { comboMult } from "./weapons.ts";
 import { sfxClear, sfxTrash, unlockAudio } from "./audio.ts";
 import { draw, drawBigMap, drawMap, type FrameBuffers } from "./render.ts";
 
@@ -55,6 +56,8 @@ function hud(): void {
     fps,
     time: fmtMs(game.elapsed()),
     streak: game.streakLive(),
+    score: game.score,
+    mult: comboMult(Math.max(1, game.streak)),
   });
   checkDone();
 }
@@ -65,15 +68,16 @@ interface Pb {
   best: number | null;
   last: number | null;
   clears: number;
+  bestScore: number | null;
 }
 function loadPB(): Pb {
   try {
     const s = JSON.parse(localStorage.getItem(PBKEY) as string);
-    if (s && typeof s === "object") return { best: null, last: null, clears: 0, ...s };
+    if (s && typeof s === "object") return { best: null, last: null, clears: 0, bestScore: null, ...s };
   } catch {
     // first run / privacy mode
   }
-  return { best: null, last: null, clears: 0 };
+  return { best: null, last: null, clears: 0, bestScore: null };
 }
 function savePB(p: Pb): void {
   try {
@@ -108,21 +112,45 @@ function finishText(p: { total: number | null; trashTotal: number | null; gather
   );
   if (s.timeMs > 0) {
     lines.push(
-      "Time " + fmtMs(s.timeMs) + " · walked " + fmtDist(s.dist) + " · " + s.picked + " envelopes picked up · explored " + ex.pct + "%.",
+      "Score " +
+        s.score +
+        " · time " +
+        fmtMs(s.timeMs) +
+        " · walked " +
+        fmtDist(s.dist) +
+        " · " +
+        s.picked +
+        " envelopes picked up · explored " +
+        ex.pct +
+        "%.",
     );
+  } else if (s.score > 0) {
+    lines.push("Score " + s.score + ".");
   }
   if (cats) lines.push(cats + ".");
   if (s.timeMs > 0) {
     const pb = loadPB();
     const prev = pb.best;
     const best = prev === null || s.timeMs < prev;
-    savePB({ best: best ? s.timeMs : prev, last: s.timeMs, clears: pb.clears + 1 });
+    const prevScore = pb.bestScore;
+    const scoreBest = s.score > 0 && (prevScore === null || s.score > prevScore);
+    savePB({
+      best: best ? s.timeMs : prev,
+      last: s.timeMs,
+      clears: pb.clears + 1,
+      bestScore: scoreBest ? s.score : prevScore,
+    });
     sfxClear();
     lines.push(
       best
         ? "★ New personal best" + (prev !== null ? " — was " + fmtMs(prev) : "") + "!"
         : "Personal best " + fmtMs(prev as number) + " · cleared " + (pb.clears + 1) + "× total.",
     );
+    if (scoreBest) {
+      lines.push("★ New high score — " + s.score + (prevScore !== null ? " (was " + prevScore + ")" : "") + "!");
+    } else if (prevScore !== null && s.score > 0) {
+      lines.push("High score " + prevScore + " · this run " + s.score + ".");
+    }
   }
   lines.push("Review the queue to move them to Trash, or keep walking.");
   return lines.join("<br>");
@@ -143,6 +171,7 @@ function checkDone(): void {
     const st = document.getElementById("finst");
     if (st) st.innerHTML = finishHtml;
     wrap.hidden = false;
+    releaseMouse();
   } else if (game.DONEACK || !p.done) {
     if (!p.done) {
       game.DONEACK = false;
@@ -192,9 +221,18 @@ function paintBigStatus(): void {
   if (st) st.textContent = bigStatus();
 }
 
+function releaseMouse(): void {
+  try {
+    if (document.pointerLockElement === cv) document.exitPointerLock();
+  } catch {
+    // ignore
+  }
+}
+
 function setBig(on: boolean): void {
   bigwrap.hidden = !on;
   if (on) {
+    releaseMouse();
     try {
       drawBigMap(bigx, big, game, world);
     } catch {
@@ -231,8 +269,32 @@ addEventListener(
   },
   { passive: false },
 );
-// Autoplay policy: create/resume the audio context on the first gesture.
-addEventListener("pointerdown", () => unlockAudio(), { once: true });
+function uiBlocksFire(): boolean {
+  if (($("dg") as HTMLDialogElement).open) return true;
+  if (!bigwrap.hidden) return true;
+  const fin = document.getElementById("finwrap");
+  return !!(fin && !fin.hidden);
+}
+
+cv.addEventListener("pointerdown", (e) => {
+  unlockAudio();
+  if (uiBlocksFire()) return;
+  if (e.pointerType === "touch") {
+    game.fire(hud);
+    return;
+  }
+  if (document.pointerLockElement !== cv) {
+    void cv.requestPointerLock();
+    return;
+  }
+  game.fire(hud);
+});
+document.addEventListener("mousemove", (e) => {
+  if (document.pointerLockElement !== cv) return;
+  if (game.aw) game.setAuto(false);
+  game.ang += e.movementX * 0.0025 * (+SET.sens || 1);
+});
+
 addEventListener("keydown", () => unlockAudio(), { once: true });
 addEventListener("wheel", () => unlockAudio(), { once: true, passive: true });
 
@@ -261,6 +323,14 @@ addEventListener("keydown", (e: KeyboardEvent) => {
   if (k == " ") {
     e.preventDefault();
     game.setAuto(!game.aw);
+    return;
+  }
+  if (k === "1") {
+    game.weapon = "stamp";
+    return;
+  }
+  if (k === "2") {
+    game.weapon = "shred";
     return;
   }
   game.keys[k] = 1;
@@ -331,6 +401,7 @@ const dg = $("dg") as HTMLDialogElement,
   go = $("go") as HTMLButtonElement;
 function openReview(): void {
   if (!game.Q.length) return;
+  releaseMouse();
   hideFin();
   $("dn").textContent = String(game.Q.length);
   // Whole queue, not a sample: #dl is capped at ~4.5 rows and scrolls.

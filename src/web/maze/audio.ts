@@ -89,3 +89,20 @@ export function sfxTrash(): void {
 export function sfxClear(): void {
   [523, 659, 784, 1047].forEach((f, i) => tone({ freq: f, dur: 0.16, type: "triangle", gain: 0.4, delay: i * 0.09 }));
 }
+
+/** Weapon fire: bright pop (stamp) or low noise sweep (shred). */
+export function sfxFire(kind: "stamp" | "shred"): void {
+  if (kind === "stamp") {
+    tone({ freq: 680, to: 920, dur: 0.08, type: "square", gain: 0.2 });
+    tone({ freq: 1200, dur: 0.05, type: "sine", gain: 0.15, delay: 0.03 });
+  } else {
+    tone({ freq: 180, to: 90, dur: 0.22, type: "sawtooth", gain: 0.18 });
+    tone({ freq: 240, to: 120, dur: 0.18, type: "square", gain: 0.12, delay: 0.04 });
+  }
+}
+
+/** Shredder collateral on protected mail: short dissonant buzz. */
+export function sfxPenalty(): void {
+  tone({ freq: 220, dur: 0.14, type: "sawtooth", gain: 0.28 });
+  tone({ freq: 185, dur: 0.16, type: "sawtooth", gain: 0.24, delay: 0.06 });
+}

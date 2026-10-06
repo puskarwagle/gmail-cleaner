@@ -3,60 +3,17 @@
  * sprites, and the bird's-eye minimap. All functions take explicit contexts
  * and state — no module-level canvas globals.
  */
-import { SUPER } from "./office-gen.ts";
+import { SUPER, raycast, type CastHit } from "./office-gen.ts";
+import { WEAPONS } from "./weapons.ts";
 import { SET } from "./settings.ts";
 import { texFor } from "./textures.ts";
 import type { Game, MailItem } from "./game.ts";
 import type { World } from "./world.ts";
 
-export interface CastHit {
-  d: number;
-  side: number;
-  t: number;
-  mx: number;
-  my: number;
-}
+export { type CastHit };
 
 export function cast(world: World, px: number, py: number, dx: number, dy: number): CastHit {
-  if (!dx) dx = 1e-9;
-  if (!dy) dy = 1e-9;
-  let mx = Math.floor(px),
-    my = Math.floor(py);
-  const ax = Math.abs(1 / dx),
-    ay = Math.abs(1 / dy);
-  let sx: number, sy: number, qx: number, qy: number;
-  if (dx < 0) {
-    sx = -1;
-    qx = (px - mx) * ax;
-  } else {
-    sx = 1;
-    qx = (mx + 1 - px) * ax;
-  }
-  if (dy < 0) {
-    sy = -1;
-    qy = (py - my) * ay;
-  } else {
-    sy = 1;
-    qy = (my + 1 - py) * ay;
-  }
-  let side = 0;
-  for (let i = 0; i < 100; i++) {
-    if (qx < qy) {
-      qx += ax;
-      mx += sx;
-      side = 0;
-    } else {
-      qy += ay;
-      my += sy;
-      side = 1;
-    }
-    if (world.wall(mx, my)) {
-      const d = Math.max(0.05, side ? qy - ay : qx - ax),
-        w = side ? px + d * dx : py + d * dy;
-      return { d, side, t: w - Math.floor(w), mx, my };
-    }
-  }
-  return { d: 99, side: 0, t: 0, mx, my };
+  return raycast(world, px, py, dx, dy);
 }
 
 export function drawEnvelope(
@@ -286,7 +243,10 @@ export function draw(
     drawEnvelope(g, e[1], e[2], Hh / 2 + Math.sin(t * 2 + e[4] * 3 + e[5]) * e[3] * 0.1 + e[3] * 0.2, e[3], Math.max(0.2, 1 - e[0] / 45), t);
   drawPickups(g, W, Hh, game, t * 1000);
   drawGuide(g, W, Hh, game);
+  drawSparks(g, W, Hh, game, t * 1000);
   drawFx(g, W, Hh, game, t * 1000);
+  drawWeapon(g, W, Hh, game, t * 1000);
+  drawCrosshair(g, W, Hh, game.flashT);
 }
 
 // Pickup juice: freshly grabbed envelopes rush toward the crosshair, swelling
@@ -379,8 +339,87 @@ function drawGuide(g: CanvasRenderingContext2D, W: number, Hh: number, game: Gam
   g.restore();
 }
 
-// Floating pickup pops: "+1 Queued" pills that rise and fade near the
-// crosshair for ~1.2 s after each envelope pickup (game.fx, capped at 6).
+function drawCrosshair(g: CanvasRenderingContext2D, W: number, Hh: number, flashT: number): void {
+  const cx = W / 2,
+    cy = Hh / 2;
+  const pop = flashT > 0 ? 1 + flashT * 0.35 : 1;
+  const len = Math.max(8, W * 0.018) * pop;
+  g.save();
+  g.strokeStyle = flashT > 0.2 ? "rgba(255,220,180,.95)" : "rgba(238,242,245,.72)";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(cx - len, cy);
+  g.lineTo(cx + len, cy);
+  g.moveTo(cx, cy - len);
+  g.lineTo(cx, cy + len);
+  g.stroke();
+  g.restore();
+}
+
+function drawSparks(g: CanvasRenderingContext2D, W: number, Hh: number, game: Game, now: number): void {
+  if (!game.sparks.length) return;
+  game.sparks = game.sparks.filter((s) => now - s.t0 < 380);
+  if (!game.sparks.length) return;
+  const dx0 = Math.cos(game.ang),
+    dy0 = Math.sin(game.ang),
+    fov = Math.max(0.55, Math.min(1, (0.55 * W) / Hh)) * (+SET.fov || 1),
+    plx = -dy0 * fov,
+    ply = dx0 * fov,
+    inv = 1 / (plx * dy0 - dx0 * ply);
+  const mzX = W / 2,
+    mzY = Hh * 0.9;
+  g.save();
+  for (const s of game.sparks) {
+    const age = now - s.t0;
+    const k = age / 380;
+    const sx = s.x - game.px,
+      sy = s.y - game.py,
+      tx = inv * (dy0 * sx - dx0 * sy),
+      ty = inv * (-ply * sx + plx * sy);
+    if (ty < 0.15) continue;
+    const X = (W / 2) * (1 + tx / ty),
+      Y = Hh / 2 + (Hh / ty) * 0.08;
+    g.globalAlpha = Math.max(0, 1 - k);
+    g.strokeStyle = s.color;
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(mzX, mzY);
+    g.lineTo(X, Y);
+    g.stroke();
+    g.fillStyle = s.color;
+    g.beginPath();
+    g.arc(X, Y, 2 + (1 - k) * 3, 0, 6.3);
+    g.fill();
+  }
+  g.restore();
+}
+
+function drawWeapon(g: CanvasRenderingContext2D, W: number, Hh: number, game: Game, now: number): void {
+  const w = WEAPONS[game.weapon];
+  if (!w) return;
+  const cd = Math.max(0, Math.min(1, (now - game.lastFireT) / w.cooldown));
+  const cx = W / 2,
+    baseY = Hh - Math.max(18, Hh * 0.04),
+    recoil = game.flashT * Math.max(4, W * 0.012);
+  g.save();
+  g.fillStyle = "rgba(5,8,12,.78)";
+  g.fillRect(cx - 52, baseY - 22 - recoil, 104, 28);
+  g.fillStyle = "#eef2f5";
+  g.font = "600 11px 'IBM Plex Sans',system-ui,sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(w.name, cx, baseY - 8 - recoil);
+  g.fillStyle = "rgba(255,255,255,.15)";
+  g.fillRect(cx - 44, baseY + 2 - recoil, 88, 4);
+  g.fillStyle = cd > 0 ? "rgba(47,181,168,.85)" : "rgba(47,181,168,.35)";
+  g.fillRect(cx - 44, baseY + 2 - recoil, 88 * (1 - cd), 4);
+  g.fillStyle = "#31404f";
+  g.fillRect(cx - 6, baseY - 18 - recoil, 12, 10);
+  g.restore();
+}
+
+// Floating pickup pops: score/combo labels rise and fade near the crosshair
+// for ~1.2 s (game.fx, capped at 6; labels are composed at push sites).
 export function drawFx(
   g: CanvasRenderingContext2D,
   W: number,
@@ -404,7 +443,7 @@ export function drawFx(
     const fs = Math.max(13, Math.min(22, Hh * 0.032)) * pop;
     g.globalAlpha = Math.max(0, Math.min(1, alpha));
     g.font = "600 " + fs + "px 'IBM Plex Sans',system-ui,sans-serif";
-    const label = (f.prot ? "Kept safe " : "+1 ") + f.label;
+    const label = f.label;
     const w = g.measureText(label).width + 28;
     const h = fs + 16;
     g.fillStyle = "rgba(5,8,12,.82)";

@@ -2,9 +2,17 @@
  * Game state: player, queue, autopilot, mail assignment, live-report sync.
  * Imports world + hud (toast only); render.ts and main.ts read this state.
  */
-import { H2, RNG, SUPER, T_FLOOR, astar, losClear, mailSpots, pull, type SuperCell } from "./office-gen.ts";
+import { H2, RNG, SUPER, T_FLOOR, astar, losClear, mailSpots, pull, raycast, type CastHit, type SuperCell } from "./office-gen.ts";
 import { SET } from "./settings.ts";
-import { sfxKeep, sfxPickup } from "./audio.ts";
+import { sfxFire, sfxKeep, sfxPenalty, sfxPickup } from "./audio.ts";
+import {
+  PTS_GOLD,
+  PTS_PENALTY,
+  PTS_TRASH,
+  WEAPONS,
+  comboMult,
+  pelletOffsets,
+} from "./weapons.ts";
 import { toast } from "./hud.ts";
 import type { World } from "./world.ts";
 
@@ -156,6 +164,17 @@ export class Game {
   cellSeen = new Map<string, number>();
   private cellWalk = new Map<string, number>();
   private lastSeenT = 0;
+
+  /** Active weapon id (`stamp` | `shred`). */
+  weapon = "stamp";
+  /** Run score from pickups and trash hits. */
+  score = 0;
+  /** Cooldown gate: timestamp of last fire. */
+  lastFireT = 0;
+  /** Muzzle flash decay (0–1). */
+  flashT = 0;
+  /** Recent impact spark positions for render.ts. */
+  sparks: Array<{ x: number; y: number; t0: number; color: string }> = [];
 
   constructor(world: World) {
     this.world = world;
@@ -462,14 +481,134 @@ export class Game {
   }
 
   /** Finish-overlay run summary (time frozen at clear, distance walked live). */
-  runStats(): { timeMs: number; dist: number; cats: Record<string, number>; picked: number; kept: number } {
+  runStats(): { timeMs: number; dist: number; cats: Record<string, number>; picked: number; kept: number; score: number } {
     const cats: Record<string, number> = {};
     let picked = 0;
     for (const [k, v] of this.pickedCats) {
       cats[k] = v;
       picked += v;
     }
-    return { timeMs: this.elapsed(), dist: this.dist, cats, picked, kept: this.KP };
+    return { timeMs: this.elapsed(), dist: this.dist, cats, picked, kept: this.KP, score: this.score };
+  }
+
+  private addScore(base: number): number {
+    const pts = base * comboMult(this.streak);
+    this.score += pts;
+    return pts;
+  }
+
+  /** Trashable mail: queue + score (walk-over and fire share this). */
+  queueMail(m: MailItem, key: string, x: number, y: number, onHud?: () => void): boolean {
+    if (this.done.has(key)) return false;
+    this.done.add(key);
+    m.key = key;
+    this.Q.push(m);
+    this.notePick(m, x, y, false);
+    const pts = this.addScore(PTS_TRASH);
+    this.pushFx("+" + pts + " Queued", m.c || "#fff", false);
+    this.pickedCats.set(m.cat, (this.pickedCats.get(m.cat) || 0) + 1);
+    toast("Queued: " + m.from + " · " + m.sub);
+    onHud?.();
+    return true;
+  }
+
+  /** Protected mail (Stampshot / walk-over): mark kept + score, never queue. */
+  keepMail(m: MailItem, key: string, x: number, y: number, onHud?: () => void): boolean {
+    if (this.kp.has(key)) return false;
+    this.kp.add(key);
+    this.KP++;
+    this.notePick(m, x, y, true);
+    const pts = this.addScore(PTS_GOLD);
+    this.pushFx("Kept safe +" + pts, "#e9c46a", true);
+    toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
+    onHud?.();
+    return true;
+  }
+
+  /**
+   * Fire the active weapon: raycast pellets, queue/keep/penalize mail client-side
+   * only (same path as walking into envelopes). Returns false on cooldown.
+   */
+  fire(onHud?: () => void): boolean {
+    const wdef = WEAPONS[this.weapon];
+    if (!wdef) return false;
+    const n = nowMs();
+    if (n - this.lastFireT < wdef.cooldown) return false;
+    this.lastFireT = n;
+    this.flashT = 1;
+    sfxFire(wdef.isStampshot ? "stamp" : "shred");
+
+    const hitKeys = new Set<string>();
+    const goldPen = new Set<string>();
+    let anyHit = false;
+
+    for (const off of pelletOffsets(this.weapon)) {
+      const a = this.ang + off;
+      const dx = Math.cos(a),
+        dy = Math.sin(a);
+      const wall = raycast(this.world, this.px, this.py, dx, dy);
+      const maxD = Math.min(wall.d, wdef.range);
+      const steps = Math.max(1, Math.ceil(maxD / 0.35));
+      let impactX = this.px + dx * maxD;
+      let impactY = this.py + dy * maxD;
+      let sparkColor = "#9fb0bf";
+
+      for (let si = 0; si <= steps; si++) {
+        const t = (si / steps) * maxD;
+        const rx = this.px + dx * t,
+          ry = this.py + dy * t;
+        for (let j = -1; j <= 1; j++)
+          for (let i = -1; i <= 1; i++) {
+            const tx = Math.floor(rx) + i,
+              ty = Math.floor(ry) + j;
+            const key = tx + "," + ty;
+            if (hitKeys.has(key)) continue;
+            const m = this.mail(tx, ty);
+            if (!m) continue;
+            const mx = tx + 0.5,
+              my = ty + 0.5;
+            const vx = mx - this.px,
+              vy = my - this.py;
+            const tproj = vx * dx + vy * dy;
+            if (tproj <= 0.05 || tproj > maxD) continue;
+            const perp = Math.abs(vx * dy - vy * dx);
+            if (perp > 0.4) continue;
+            if (m.p) {
+              if (wdef.isStampshot) {
+                if (this.keepMail(m, key, mx, my, onHud)) {
+                  hitKeys.add(key);
+                  impactX = mx;
+                  impactY = my;
+                  sparkColor = "#e9c46a";
+                }
+              } else if (!goldPen.has(key)) {
+                goldPen.add(key);
+                this.streak = 0;
+                this.score += PTS_PENALTY;
+                this.pushFx("−25 Gold hit!", "#f06d9a", true);
+                sfxPenalty();
+                toast("Gold hit — protected mail stays put (−25)");
+                onHud?.();
+                anyHit = true;
+                impactX = mx;
+                impactY = my;
+                sparkColor = "#f06d9a";
+              }
+            } else if (!this.done.has(key)) {
+              if (this.queueMail(m, key, mx, my, onHud)) {
+                hitKeys.add(key);
+                anyHit = true;
+                impactX = mx;
+                impactY = my;
+                sparkColor = m.c || "#fff";
+              }
+            }
+          }
+      }
+      this.sparks.push({ x: impactX, y: impactY, t0: n, color: sparkColor });
+      if (this.sparks.length > 24) this.sparks.splice(0, this.sparks.length - 24);
+    }
+    return true;
   }
 
   hit(x: number, y: number, r: number): boolean {
@@ -651,6 +790,7 @@ export class Game {
   }
 
   update(dt: number, onHud: () => void): void {
+    this.flashT = Math.max(0, this.flashT - dt * 5);
     this.wx *= Math.pow(0.02, dt);
     const clq = (v: number): number => Math.max(-1, Math.min(1, v));
     const K = this.keys;
@@ -757,25 +897,8 @@ export class Game {
         const ex = cx + 0.5 - this.px,
           ey = cy + 0.5 - this.py;
         if (ex * ex + ey * ey > 0.64) continue;
-          if (m.p) {
-            if (!this.kp.has(key)) {
-              this.kp.add(key);
-              this.KP++;
-              this.pushFx("Kept safe", "#e9c46a", true);
-              this.notePick(m, cx + 0.5, cy + 0.5, true);
-              toast("Kept safe: " + m.cat.toLowerCase() + " from " + m.from);
-              onHud();
-            }
-          } else {
-            this.done.add(key);
-            m.key = key;
-            this.Q.push(m);
-            this.pushFx("Queued", m.c || "#fff", false);
-            this.notePick(m, cx + 0.5, cy + 0.5, false);
-            this.pickedCats.set(m.cat, (this.pickedCats.get(m.cat) || 0) + 1);
-            toast("Queued: " + m.from + " · " + m.sub);
-            onHud();
-          }
+          if (m.p) this.keepMail(m, key, cx + 0.5, cy + 0.5, onHud);
+          else this.queueMail(m, key, cx + 0.5, cy + 0.5, onHud);
       }
   }
 
