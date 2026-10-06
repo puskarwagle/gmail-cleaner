@@ -10,6 +10,7 @@
     "trash": "bun src/index.ts trash",
     "undo": "bun src/index.ts undo",
     "test": "bun test",
+    "build:maze": "bun scripts/build-maze.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

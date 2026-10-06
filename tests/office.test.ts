@@ -1,79 +1,44 @@
 import { describe, expect, test } from "bun:test";
+import {
+  SUPER,
+  T_FLOOR,
+  T_FRAME,
+  T_WALL,
+  astar,
+  buildArea,
+  corrWidth,
+  genSuper,
+  H2,
+  losClear,
+  mailSpots,
+  pull,
+  RNG,
+} from "../src/web/maze/office-gen.ts";
 
-// The office generator's single source of truth is the pure block inside
-// mail-maze.html (delimited by OFFICE-GEN-BEGIN/END, no DOM). These tests
-// extract that block verbatim and verify its properties, so the shipped game
-// logic itself is tested — not a duplicate copy.
-
-const BEGIN = "// ===== OFFICE-GEN-BEGIN";
-const END = "// ===== OFFICE-GEN-END";
-
-interface RoomRect {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-  cx: number;
-  cy: number;
-  hue: number;
-}
-interface Door {
-  tx: number;
-  ty: number;
-  horiz: boolean;
-  w: number;
-}
-interface SuperCell {
-  sx: number;
-  sy: number;
-  vw: number;
-  hw: number;
-  mode: string;
-  lobby: boolean;
-  tiles: Uint8Array;
-  roomMap: Int16Array;
-  rooms: RoomRect[];
-  doors: Door[];
-  gaps: Set<string>;
-}
-interface OfficeGen {
-  SUPER: number;
-  T_FLOOR: number;
-  T_WALL: number;
-  T_FRAME: number;
-  H2: (x: number, y: number, s: number, seed: number) => number;
-  RNG: (seed: number) => () => number;
-  corrWidth: (line: number, seed: number) => number;
-  genSuper: (sx: number, sy: number, seed: number) => SuperCell;
-  buildArea: (seed: number, x0: number, y0: number, w: number, h: number) => { tiles: Uint8Array; W: number; H: number };
-  astar: (
-    W: number,
-    H: number,
-    walk: (x: number, y: number) => boolean,
-    sx: number,
-    sy: number,
-    gx: number,
-    gy: number,
-  ) => number[][] | null;
-  losClear: (walkR: (x: number, y: number) => boolean, ax: number, ay: number, bx: number, by: number) => boolean;
-  pull: (walkR: (x: number, y: number) => boolean, path: number[][] | null) => number[][] | null;
-  mailSpots: (sx: number, sy: number, seed: number, density: number) => number[][];
-}
+// Single source of truth is src/web/maze/office-gen.ts. These tests import
+// it directly; mail-maze.html embeds the transpiled output (see
+// scripts/build-maze.ts) so the shipped game stays single-file for file://.
 
 const html = await Bun.file(new URL("../mail-maze.html", import.meta.url)).text();
 
-function loadGen(): OfficeGen {
-  const s = html.indexOf(BEGIN);
-  const e = html.indexOf(END);
-  if (s < 0 || e < 0 || e <= s) throw new Error("office generator block not found in mail-maze.html");
-  const code = html.slice(s, e); // keep the BEGIN marker: it is a full // comment line
-  const factory = new Function(
-    `${code}\n;return {SUPER,T_FLOOR,T_WALL,T_FRAME,H2,RNG,corrWidth,genSuper,buildArea,astar,losClear,pull,mailSpots};`,
-  ) as () => OfficeGen;
-  return factory();
-}
-
-const G = loadGen();
+// Direct import: no new Function() extraction hack. The build script
+// (bun run build:maze) guarantees the html block matches this module;
+// the shell test below guards against stale builds.
+const G = {
+  SUPER,
+  T_FLOOR,
+  T_WALL,
+  T_FRAME,
+  H2,
+  RNG,
+  corrWidth,
+  genSuper,
+  buildArea,
+  astar,
+  losClear,
+  pull,
+  mailSpots,
+};
 const SEEDS = [7, 1234, 99991, 20261003, 555];
 
 function floodCount(area: { tiles: Uint8Array; W: number; H: number }, sx: number, sy: number): number {
@@ -107,16 +72,18 @@ function floodCount(area: { tiles: Uint8Array; W: number; H: number }, sx: numbe
 }
 
 describe("office html shell", () => {
-  test("generator block exists and old cell maze is gone", () => {
-    expect(html).toContain("OFFICE-GEN-BEGIN");
-    expect(html).toContain("OFFICE-GEN-END");
+  test("bundled single-file build from src/web/maze/*", () => {
+    expect(html).toContain("MAZE-BUNDLE-BEGIN");
+    expect(html).toContain("MAZE-BUNDLE-END");
+    expect(html).not.toContain("OFFICE-GEN-BEGIN");
     expect(html).not.toContain("openE(");
     expect(html).not.toContain("openS(");
     expect(html).not.toContain("const N=8");
     // wall() is an O(1) lookup into cached super-cell tile arrays
-    expect(html).toContain("c.tiles[(ty-sy*SUPER)*SUPER+(tx-sx*SUPER)]");
+    // (Bun.build normalizes whitespace — match the bundled form)
+    expect(html).toContain("c.tiles[(ty - sy * SUPER) * SUPER + (tx - sx * SUPER)]");
     // YES-confirm flow and queue-only autopilot preserved
-    expect(html).toContain('confirm:yes.value');
+    expect(html).toContain("confirm: yes.value");
     expect(html).toContain("Type YES to continue");
   });
 });

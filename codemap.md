@@ -23,8 +23,25 @@ gmail-cleaner/
 │   │   │                     GET /api/config, POST /api/config/credentials,
 │   │   │                     POST /api/config/revoke. Server re-checks every ID
 │   │   │                     against latest.json; credentials validated + 0600.
-│   │   └── settings.html     settings page: Maze UI tab (localStorage, live) +
-│   │                         Gmail API tab (upload/paste credentials, status, revoke)
+│   │   └── settings.html     settings page: Maze UI tab (autosaved localStorage,
+│   │                         live) + Last trash run (undo) + Gmail API tab
+│   │                         (upload/paste credentials, status, revoke); Esc → maze
+│   │   └── maze/               maze game sources (pure, no DOM except via main — future split)
+│   │       └── office-gen.ts   pure office generator (SUPER/genSuper/buildArea/astar/
+│   │                             losClear/pull/mailSpots); single source of truth for
+│   │                             the html block below
+│   │       └── game.ts         player/queue state + autopilot (mail-seeking A*,
+│   │                             LOS direct-homing <9 m, alignment-scaled drive,
+│   │                             stuck blacklist, inbox-clear progress),
+│   │                             walk + fire queue/keep helpers, score/combo,
+│   │                             pickup streak + fly fx, run stats
+│   │                             (timer/distance/score/per-category), fog-of-war
+│   │                             seen set, sfx hooks
+│   │       └── weapons.ts      pure weapon defs, comboMult, pellet spread (tests)
+│   │       └── audio.ts        synthesized WebAudio SFX (pickup/keep/trash/clear/
+│   │                             fire/penalty); honours SET.sound, no-op in tests
+│   │       └── render.ts       raycaster + envelopes + fly-to-crosshair pickups
+│   │                             + crosshair/sparks/weapon HUD + fog-gated maps
 │   └── cli/                  presentation only (may print / read stdin / open browser)
 │       ├── scanCommand.ts    → runScan + printSummary
 │       ├── reportCommand.ts  → loadLatestReport + printSummary + printProposedActions
@@ -32,21 +49,36 @@ gmail-cleaner/
 │       ├── undoCommand.ts    → runUndo
 │       ├── mazeCommand.ts    → needs reports/latest.json + startMazeServer + open browser
 │       └── ui.ts             printSummary, printProposedActions, askYes (exactly YES)
-├── mail-maze.html            single-file OFFICE FLOOR game; live mode via /api/report (token header),
-│                             demo fallback when opened via file://; bird's-eye map (M),
+├── mail-maze.html            single-file OFFICE FLOOR game (GENERATED — do not hand-edit;
+│                             run `bun run build:maze`); live mode via /api/report (token header),
+│                             demo fallback when opened via file://; always-on fog-of-war
+│                             minimap (click opens the fullscreen radius-60 map with an
+│                             explored % + best-time footer), nearest-mail compass
+│                             + mail-seeking autopilot, pickup pops + fly fx +
+│                             streak/timer status, sound effects, inbox-clear
+│                             overlay (run stats + personal best in localStorage),
 │                             live settings via localStorage (SET + storage events).
-│                             Pure generator block (OFFICE-GEN-BEGIN/END): 40x40-tile
+│                             Pure generator block (OFFICE-GEN-BEGIN/END) is transpiled
+│                             from src/web/maze/office-gen.ts: 40x40-tile
 │                             super-cells, corridor bands (5-wide mains / 3-wide sides),
 │                             BSP offices / open-plan halls / atriums, doorways, A* +
-│                             string-pull autopilot, hash-based mail spots. Tests extract
-│                             this block verbatim (tests/office.test.ts).
+│                             string-pull autopilot, hash-based mail spots. Tests import
+│                             the TS module directly (tests/office.test.ts).
+├── scripts/
+│   └── build-maze.ts         transpiles office-gen.ts → injects into mail-maze.html
+│                             (`bun run build:maze`, `--check` for CI drift detection)
 ├── tests/
 │   └── classifier.test.ts    6 seed cases + noreply-bank safety regression (bun:test)
-│   └── office.test.ts        office generator: determinism, corridor seams, room sizes,
+│   └── office.test.ts        office generator (imports src/web/maze/office-gen.ts directly):
+│                             determinism, corridor seams, room sizes,
 │                             per-super-cell doors, 5x5 flood-fill connectivity (several
 │                             seeds), mail placement, A* + string-pull (bun:test)
 │   └── mazeServer.test.ts    /api/trash + /api/undo guards: non-candidate/confirm/token/stale (bun:test)
 │   └── mazeConfig.test.ts    /settings + /api/config: validation, 0600 write, revoke (bun:test)
+│   └── auto.test.ts          autopilot: mail-seeking pickup, faced-away steering,
+│                             guide target preference, 60 s roam (bun:test)
+│   └── juice.test.ts         pickup streak + fly fx, fog exploration, run stats (bun:test)
+│   └── weapons.test.ts       gunplay: fire queue-only, cooldown, gold rules, combo (bun:test)
 ├── reports/                  gitignored audit trail (latest.json, trash-*.json, undo-*.json)
 ├── credentials.example.json  committed shape reference (real credentials.json is gitignored)
 ├── seed-prompt.md            frozen product spec
@@ -64,7 +96,7 @@ trash:  reports/latest.json → preview → YES → client.trashOne × N → rep
 undo:   reports/trash-*.json → client.untrashOne × N (+INBOX) → reports/undo-*.json
 maze:   reports/latest.json → web/server (/api/report) → mail-maze.html envelopes
         → review + YES → server re-checks IDs → runTrash(ids) → reports/trash-*.json
-        → Undo last → runUndo() → envelopes restored in the maze
+        → settings "Undo last trash run" → runUndo() → messages back in the Inbox
 ```
 
 ## UI-ready seams (for future web/mobile)
