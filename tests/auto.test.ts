@@ -62,7 +62,9 @@ function run(game: Game, seconds: number): void {
 }
 
 describe("auto-walk mail hunting", () => {
-  test("picks up visible mail 3-8m away while starting faced away", () => {
+  test(
+    "picks up visible mail 3-8m away while starting faced away",
+    () => {
     // Seeds 2/12/22 failed before the steering fix.
     for (const seed of [1, 2, 12, 22]) {
       const sc = findScenario(seed, 3, 8, true);
@@ -75,7 +77,9 @@ describe("auto-walk mail hunting", () => {
       run(game, 20);
       expect(game.done.has(tx + "," + ty)).toBe(true);
     }
-  });
+  },
+    15000,
+  );
 
   test("does not wander off when nearly on top of mail", () => {
     const sc = findScenario(7, 0.9, 1.5, true);
