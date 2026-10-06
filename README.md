@@ -86,9 +86,19 @@ tells you so if no report exists. The world is an endless office floor:
 straight 3/5-wide corridors, BSP offices, open-plan halls, atriums, doorways
 with wood trim, carpet vs lino floors and ceiling light panels — generated
 lazily from a random seed per session. The status bar shows live fps, the
-run timer, and a pickup **streak** counter while you chain envelopes
-(within 3 s of each other).
+run timer, **score** with a combo multiplier (×1–×5), and a pickup
+**streak** counter while you chain envelopes (within 3 s of each other).
 
+- **Click the canvas** to capture the mouse; **click again to fire**. Keys
+  `1` / `2` switch **Stampshot** (single ray, long range) and **Shredder**
+  (shotgun cone, short range). Mouse-look while captured cancels auto-walk,
+  like a trackpad swipe. Touch devices fire on tap (no pointer lock).
+- Walk into envelopes or **shoot** them to queue trash candidates — both
+  use the same review → typed-`YES` → trash API path; firing never calls
+  the network by itself. Trash hits add score (10 × combo); deliberate
+  Stampshot hits on gold mail mark them kept and add bonus points;
+  Shredder pellets that clip gold cost −25 and reset your streak without
+  collecting the mail.
 - Walk into envelopes to queue them. Trash candidates are normal envelopes;
   protected mail (receipts, security, personal, uncertain) is gold with a
   lock and can never be collected. Grabbed envelopes fly toward the
@@ -107,10 +117,10 @@ run timer, and a pickup **streak** counter while you chain envelopes
   and ignores a spot for 20 s after getting stuck on it twice instead of
   looping into the same wall.
 - Gathering every trashable message raises an **Inbox clear** overlay with
-  run stats — time, distance walked, per-category breakdown, exploration —
-  plus a **personal best** (fastest clear, stored in the browser) and a
-  fanfare. Dismiss with **Keep walking** or press `Esc`, or go straight to
-  review.
+  run stats — score, time, distance walked, per-category breakdown,
+  exploration — plus **personal bests** for fastest clear and high score
+  (stored in the browser) and a fanfare. Dismiss with **Keep walking** or
+  press `Esc`, or go straight to review.
 - **Review queue** opens the typed-`YES` dialog listing the whole queue
   (capped at ~4 rows, scroll for the rest; `Esc` cancels); confirming POSTs
   the queued IDs to the server, which re-reads `reports/latest.json` and

@@ -33,13 +33,15 @@ gmail-cleaner/
 │   │       └── game.ts         player/queue state + autopilot (mail-seeking A*,
 │   │                             LOS direct-homing <9 m, alignment-scaled drive,
 │   │                             stuck blacklist, inbox-clear progress),
+│   │                             walk + fire queue/keep helpers, score/combo,
 │   │                             pickup streak + fly fx, run stats
-│   │                             (timer/distance/per-category), fog-of-war
+│   │                             (timer/distance/score/per-category), fog-of-war
 │   │                             seen set, sfx hooks
-│   │       └── audio.ts        synthesized WebAudio SFX (pickup/keep/trash/clear);
-│   │                             honours SET.sound, no-op outside a browser
+│   │       └── weapons.ts      pure weapon defs, comboMult, pellet spread (tests)
+│   │       └── audio.ts        synthesized WebAudio SFX (pickup/keep/trash/clear/
+│   │                             fire/penalty); honours SET.sound, no-op in tests
 │   │       └── render.ts       raycaster + envelopes + fly-to-crosshair pickups
-│   │                             + fog-gated minimap/big-map + fx pops
+│   │                             + crosshair/sparks/weapon HUD + fog-gated maps
 │   └── cli/                  presentation only (may print / read stdin / open browser)
 │       ├── scanCommand.ts    → runScan + printSummary
 │       ├── reportCommand.ts  → loadLatestReport + printSummary + printProposedActions
@@ -76,6 +78,7 @@ gmail-cleaner/
 │   └── auto.test.ts          autopilot: mail-seeking pickup, faced-away steering,
 │                             guide target preference, 60 s roam (bun:test)
 │   └── juice.test.ts         pickup streak + fly fx, fog exploration, run stats (bun:test)
+│   └── weapons.test.ts       gunplay: fire queue-only, cooldown, gold rules, combo (bun:test)
 ├── reports/                  gitignored audit trail (latest.json, trash-*.json, undo-*.json)
 ├── credentials.example.json  committed shape reference (real credentials.json is gitignored)
 ├── seed-prompt.md            frozen product spec
