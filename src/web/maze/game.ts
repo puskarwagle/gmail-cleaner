@@ -107,6 +107,8 @@ export class Game {
   vt = 0;
   aw = 0;
   wx = 0;
+  /** Playable map mode: movement is top-down instead of raycaster-relative. */
+  mapMode = 0;
 
   path: number[][] | null = null;
   followI = 0;
@@ -620,6 +622,17 @@ export class Game {
     );
   }
 
+  /**
+   * Axis-separated collision clamp. Each axis resolves on its own so a blocked
+   * move slides along the wall instead of sticking to it. `y` is re-read from
+   * the live position after the x step, so callers can pass a target for one
+   * axis at a time.
+   */
+  private step(x: number, y: number): void {
+    if (!this.hit(x, this.py, 0.3)) this.px = x;
+    if (!this.hit(this.px, y, 0.3)) this.py = y;
+  }
+
   planAuto(): void {
     const PW = 128,
       x0 = Math.floor(this.px) - 64,
@@ -797,6 +810,10 @@ export class Game {
     let f = (K.w || K.arrowup ? 1 : 0) - (K.s || K.arrowdown ? 1 : 0);
     let tr = (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0) + clq(this.wx / 120);
     if (this.aw && (f || tr)) this.setAuto(false);
+    // Map mode steers top-down, so the autopilot's raycaster-heading steering
+    // has nothing to drive. Drop it on entry rather than leaving it running and
+    // spinning the heading arrow while the player cannot move.
+    if (this.aw && this.mapMode) this.setAuto(false);
     if (this.aw) {
       // Close visible mail: drive straight at it every frame instead of
       // following a stale A* path. The hunt target is sticky (cheap LOS
@@ -863,15 +880,31 @@ export class Game {
     f = Math.max(-1, Math.min(1, f));
     tr = Math.max(-1, Math.min(1, tr));
     const k = Math.min(1, dt * 9);
-    this.vf += (f - this.vf) * k;
-    this.vt += (tr - this.vt) * k;
-    this.ang += this.vt * dt * (+SET.turn || 2.4);
-    const nx = this.px + Math.cos(this.ang) * this.vf * (+SET.move || 10) * dt;
-    const ny = this.py + Math.sin(this.ang) * this.vf * (+SET.move || 10) * dt;
     const ox = this.px,
       oy = this.py;
-    if (!this.hit(nx, this.py, 0.3)) this.px = nx;
-    if (!this.hit(this.px, ny, 0.3)) this.py = ny;
+    if (this.mapMode) {
+      // Playable map mode: WASD/arrows step north/south/east/west across the
+      // floor. The raycaster smoothing and the heading turn are skipped, so
+      // `ang` is untouched and the view lines up on the switch back.
+      const ix = (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0);
+      const iy = (K.s || K.arrowdown ? 1 : 0) - (K.w || K.arrowup ? 1 : 0);
+      if (ix || iy) {
+        const il = Math.hypot(ix, iy),
+          isp = (+SET.move || 10) * dt;
+        this.step(ox + (ix / il) * isp, oy);
+        this.step(this.px, oy + (iy / il) * isp);
+      }
+      this.vf += (0 - this.vf) * k;
+      this.vt += (0 - this.vt) * k;
+    } else {
+      this.vf += (f - this.vf) * k;
+      this.vt += (tr - this.vt) * k;
+      this.ang += this.vt * dt * (+SET.turn || 2.4);
+      const nx = this.px + Math.cos(this.ang) * this.vf * (+SET.move || 10) * dt;
+      const ny = this.py + Math.sin(this.ang) * this.vf * (+SET.move || 10) * dt;
+      this.step(nx, this.py);
+      this.step(this.px, ny);
+    }
     const mdx = this.px - ox,
       mdy = this.py - oy,
       md = mdx * mdx + mdy * mdy;
