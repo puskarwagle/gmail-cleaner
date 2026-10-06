@@ -18,3 +18,7 @@ dist/
 # Bun (lockfile IS committed for reproducible installs)
 .bun/
 bun.lockb
+
+# Local scratch / planning notes (not part of spec, keep tree clean)
+scratch/
+plan-to-implement.md
