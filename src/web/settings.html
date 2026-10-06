@@ -29,8 +29,8 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--ac);vertical-alig
 button.pri{background:var(--ac);border:1px solid var(--ac);color:#04201d;border-radius:10px;height:44px;padding:0 20px;font:600 14px system-ui,sans-serif;cursor:pointer}
 button.ghost{background:transparent;border:1px solid var(--line);color:inherit;border-radius:10px;height:44px;padding:0 20px;font:500 14px system-ui,sans-serif;cursor:pointer}
 button.danger{background:transparent;border:1px solid #e0605f;color:#e0605f;border-radius:10px;height:44px;padding:0 20px;font:500 14px system-ui,sans-serif;cursor:pointer}
-#msg{min-height:22px;margin-top:12px;font-size:13px}
-#msg.ok{color:var(--ac)}#msg.err{color:#e0605f}
+#msg,#msg3{min-height:22px;margin-top:12px;font-size:13px}
+#msg.ok,#msg3.ok{color:var(--ac)}#msg.err,#msg3.err{color:#e0605f}
 .status{font-family:monospace;font-size:13px;background:#05080c;border:1px solid var(--line);border-radius:8px;padding:12px 14px;line-height:1.8}
 .hidden{display:none}
 </style>
@@ -48,21 +48,27 @@ button.danger{background:transparent;border:1px solid #e0605f;color:#e0605f;bord
 <section id="p1" role="tabpanel">
 <div class="card">
 <h2>Maze UI</h2>
-<p>Stored in this browser only (localStorage). Applies live — keep the maze open in another tab and tweak away.</p>
+<p>Stored in this browser only (localStorage) and saved automatically as you change anything. Applies live — keep the maze open in another tab and tweak away.</p>
 <label><b>Field of view</b> <span class="v" id="v-fov"></span><input type="range" id="s-fov" min="0.6" max="1.4" step="0.05"></label>
 <label><b>Walk speed</b> <span class="v" id="v-move"></span><input type="range" id="s-move" min="5" max="20" step="0.1"></label>
 <label><b>Turn speed</b> <span class="v" id="v-turn"></span><input type="range" id="s-turn" min="1" max="5" step="0.1"></label>
-<label><b>Swipe sensitivity</b> <span class="v" id="v-sens"></span><input type="range" id="s-sens" min="0.3" max="3" step="0.1"></label>
+<label><b>Swipe / mouse-look sensitivity</b> <span class="v" id="v-sens"></span><input type="range" id="s-sens" min="0.3" max="3" step="0.1"></label>
 <label><input type="checkbox" id="s-flip"> <b>Invert swipe direction</b> (for flipped scroll-direction setups)</label>
+<label><input type="checkbox" id="s-sound"> <b>Sound effects</b> (pickup blips, chimes, clear fanfare)</label>
 <label><b>Auto-walk speed</b> <span class="v" id="v-auto"></span><input type="range" id="s-auto" min="0.4" max="1.2" step="0.05"></label>
 <label><b>Render quality</b><select id="s-quality"><option value="0.5">0.5× — fastest</option><option value="0.75">0.75×</option><option value="1">1× — sharpest</option></select></label>
 <label><b>Envelope density</b> <span class="v" id="v-density"></span><input type="range" id="s-density" min="0" max="20" step="1"></label>
 <label><b>Wall theme</b><select id="s-theme"><option value="0">Ember</option><option value="1">Lagoon</option><option value="2">Moss</option><option value="3">Mono</option></select></label>
-<label><input type="checkbox" id="s-minimap"> <b>Bird's-eye map</b> (toggle in-game with <code>M</code>)</label>
 <label><b>Map size</b> <span class="v" id="v-mapSize"></span><input type="range" id="s-mapSize" min="96" max="220" step="4"></label>
 <label><b>Map range</b> <span class="v" id="v-mapRange"></span><input type="range" id="s-mapRange" min="12" max="40" step="1"></label>
-<div class="row"><button class="pri" id="saveMaze">Save</button><button class="ghost" id="resetMaze">Reset defaults</button></div>
+<div class="row"><button class="ghost" id="resetMaze">Reset defaults</button></div>
 <div id="msg"></div>
+</div>
+<div class="card">
+<h2>Last trash run</h2>
+<p>Restores the messages from your most recent trash run back to the Inbox (Gmail also keeps them in Trash for 30 days).</p>
+<div class="row"><button class="pri" id="undo">Undo last trash run</button></div>
+<div id="msg3"></div>
 </div>
 </section>
 
@@ -95,16 +101,18 @@ $('t1').setAttribute('aria-selected',n==1);$('t2').setAttribute('aria-selected',
 $('p1').classList.toggle('hidden',n!=1);$('p2').classList.toggle('hidden',n!=2)}
 // ---- Maze UI settings (localStorage, shared live with the maze tab) ----
 const KEY='mailmaze.settings.v1';
-const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,minimap:true,mapSize:148,mapRange:24,flip:false};
+const DEF={fov:1,move:10,turn:2.4,sens:1,auto:.85,quality:1,density:7,theme:0,mapSize:148,mapRange:24,flip:false,sound:true};
 function cur(){let s={};try{s=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}return{...DEF,...s}}
 function paint(){const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
 if(el.type=='checkbox')el.checked=!!s[k];else el.value=s[k];const v=$('v-'+k);if(v)v.textContent=s[k]}}
-for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el||el.type=='checkbox')continue;
-el.oninput=()=>{const v=$('v-'+k);if(v)v.textContent=el.value}}
 function say(m,ok){const e=$('msg');e.textContent=m;e.className=ok?'ok':'err'}
-$('saveMaze').onclick=()=>{const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);
-s[k]=el.type=='checkbox'?el.checked:(el.tagName=='SELECT'?+el.value:+el.value)}
-try{localStorage.setItem(KEY,JSON.stringify(s));paint();say('Saved — the open maze picks it up instantly.',1)}catch(e){say('Could not save: '+e,0)}};
+// Autosave: every control writes localStorage itself — there is no Save button.
+function save(){const s=cur();for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
+s[k]=el.type=='checkbox'?el.checked:+el.value}
+try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){say('Could not save: '+e,0)}}
+for(const k of Object.keys(DEF)){const el=$('s-'+k);if(!el)continue;
+const tick=()=>{const v=$('v-'+k);if(v)v.textContent=el.value};
+el.oninput=()=>{tick();save()};el.onchange=()=>{tick();save()}}
 $('resetMaze').onclick=()=>{try{localStorage.setItem(KEY,JSON.stringify(DEF));paint();say('Defaults restored.',1)}catch(e){say('Could not reset: '+e,0)}};
 paint();
 // ---- Gmail API form (server-backed) ----
@@ -134,6 +142,14 @@ $('revoke').onclick=async()=>{try{const r=await fetch('api/config/revoke',{metho
 const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||('Revoke failed ('+r.status+')'));
 say2('Local token deleted. Next Gmail access will ask for consent again.',1);status()}catch(e){say2(String((e&&e.message)||e),0)}};
 status();
+// ---- Undo last trash run (server-backed, same guards as the maze) ----
+$('undo').onclick=async()=>{const e=$('msg3');e.textContent='Restoring…';e.className='';
+try{const r=await fetch('api/undo',{method:'POST',headers:H(),body:'{}'});
+const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||('Undo failed ('+r.status+')'));
+const n=(j&&j.restoredCount!=null)?j.restoredCount:0;
+e.textContent='Restored '+n+' message'+(n==1?'':'s')+' to your Inbox.';e.className='ok'}catch(ex){e.textContent=String((ex&&ex.message)||ex);e.className='err'}};
+// Esc goes back to the maze (same target as the Back link).
+addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();location.href=$('back').href}});
 </script>
 </body>
 </html>
