@@ -52,8 +52,11 @@ gmail-cleaner/
 ├── mail-maze.html            single-file OFFICE FLOOR game (GENERATED — do not hand-edit;
 │                             run `bun run build:maze`); live mode via /api/report (token header),
 │                             demo fallback when opened via file://; always-on fog-of-war
-│                             minimap (click opens the fullscreen radius-60 map with an
-│                             explored % + best-time footer), nearest-mail compass
+│                             minimap (click or M opens the fullscreen radius-60 map
+│                             with an explored % + best-time footer — the map is
+│                             playable: WASD/arrows walk top-down via game.mapMode,
+│                             and the corner canvas becomes a live first-person
+│                             preview while it is open), nearest-mail compass
 │                             + mail-seeking autopilot, pickup pops + fly fx +
 │                             streak/timer status, sound effects, inbox-clear
 │                             overlay (run stats + personal best in localStorage),

@@ -107,9 +107,16 @@ run timer, **score** with a combo multiplier (×1–×5), and a pickup
 - The bird's-eye minimap (top right) is always on: walls, envelopes across
   the whole visible range (circle = trashable, gold square = protected) and
   your heading. It is **fog-of-war** — tiles and envelopes appear only once
-  you have walked near them. Click/tap the minimap to open the fullscreen
-  radius-60 map with an *explored %* meter and your personal best; click
-  outside it or press `Esc` to close.
+  you have walked near them. Click/tap the minimap (or press `M`) to open the
+  fullscreen radius-60 map with an *explored %* meter and your personal best.
+- The fullscreen map is **playable**: `WASD` or the arrow keys walk you
+  north/south/east/west across the floor while it is up, so you can navigate
+  by map and step onto envelopes the same way you would on foot. Your heading
+  is held while you do, so the first-person view lines up when you switch
+  back. The corner canvas becomes a live low-res first-person preview while
+  the map is open — click it, click outside the map, or press `Esc` to return.
+  Auto-walk is dropped when you open the map, since it steers by heading
+  rather than by map direction.
 - A compass pill and an on-screen dot point at the nearest uncollected mail
   with its distance, so you always know which way to turn.
 - **Auto-walk** (`Space` or the button) seeks real mail: it paths to the
