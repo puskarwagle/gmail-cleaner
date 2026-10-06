@@ -221,6 +221,41 @@ function paintBigStatus(): void {
   if (st) st.textContent = bigStatus();
 }
 
+/**
+ * Corner canvas while the full map is open: a live low-res first-person
+ * preview, so you can navigate by map and still see what the floor looks like.
+ * `draw()` takes an explicit context and frame buffers, so this needs no global
+ * swapping — just a second set sized to the corner canvas.
+ */
+let pvW = 0,
+  pvH = 0,
+  pvZb = new Float32Array(0),
+  pvImg: ImageData | null = null;
+function drawMiniReal(ms: number): void {
+  const MW = 148,
+    MH = Math.max(80, Math.round((148 * Hh) / Math.max(1, W)));
+  if (mm.width !== MW || mm.height !== MH) {
+    mm.width = MW;
+    mm.height = MH;
+    pvW = 0;
+  }
+  if (pvW !== MW || pvH !== MH || !pvImg) {
+    pvW = MW;
+    pvH = MH;
+    pvZb = new Float32Array(MW);
+    pvImg = mx.createImageData(MW, MH);
+  }
+  draw(mx, { W: MW, Hh: MH, zb: pvZb, img: pvImg }, game, world, ms / 1000);
+}
+
+const HINT_REAL =
+  "click the canvas to capture the mouse · click fires · 1/2 switch weapon · WASD · Space auto-walk · click the map · demo data";
+const HINT_MAP = "WASD or arrows to move on the map · click the mini view or press M for the real view";
+function hint(): void {
+  const el = $("ht");
+  if (el) el.textContent = bigwrap.hidden ? HINT_REAL : HINT_MAP;
+}
+
 function releaseMouse(): void {
   try {
     if (document.pointerLockElement === cv) document.exitPointerLock();
@@ -231,6 +266,13 @@ function releaseMouse(): void {
 
 function setBig(on: boolean): void {
   bigwrap.hidden = !on;
+  // Playable map mode: the overlay is not just a view here, WASD/arrows walk
+  // the floor across it. Fire stays blocked while it is up (click outside
+  // closes instead), which uiBlocksFire() already enforces. The autopilot
+  // steers by raycaster heading, so it is dropped on the way in.
+  game.mapMode = on ? 1 : 0;
+  if (on) game.setAuto(false);
+  hint();
   if (on) {
     releaseMouse();
     try {
@@ -245,6 +287,8 @@ bigwrap.addEventListener("click", (e) => {
   if (e.target === bigwrap) setBig(false);
 });
 // The minimap is the map button: clicking it opens (click outside / Esc closes).
+// While the map is up the corner canvas is a first-person preview, so the same
+// click is the way back out.
 mm.addEventListener("click", () => setBig(bigwrap.hidden));
 
 // Trackpad, two fingers only: horizontal swipe turns. Ignores pinch-zoom,
@@ -325,6 +369,10 @@ addEventListener("keydown", (e: KeyboardEvent) => {
     game.setAuto(!game.aw);
     return;
   }
+  if (k === "m") {
+    setBig(bigwrap.hidden);
+    return;
+  }
   if (k === "1") {
     game.weapon = "stamp";
     return;
@@ -364,7 +412,10 @@ function frame(ms: number): void {
   }
   if (ms - mmT > 120) {
     mmT = ms;
-    drawMap(mx, mm, game, world);
+    // Corner canvas: bird's-eye normally, live first-person preview while the
+    // full map is up (clicking it then takes you back to the real view).
+    if (bigwrap.hidden) drawMap(mx, mm, game, world);
+    else drawMiniReal(ms);
     // Compass + big map refresh at the same ~8 Hz throttle (cheap spot scan).
     try {
       const near = game.nearestMail(70);

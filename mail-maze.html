@@ -61,9 +61,9 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
 <canvas id="mm" width="148" height="148" title="Click to open the full map" aria-label="Bird's-eye view of the office floor — click to open the full map"></canvas>
 <div id="hud">
 <div class="r1"><div class="pn" id="st"></div><div class="g"><button id="au" aria-pressed="false">Auto-walk</button><button id="st2" title="Settings">⚙</button></div></div>
-<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht">click the canvas to capture the mouse · click fires · 1/2 switch weapon · WASD · Space auto-walk · click the map · demo data</div></div>
+<div class="r2"><div id="cp" class="pn none" aria-live="polite"><span id="ca" aria-hidden="true">➤</span><span id="cdot" aria-hidden="true"></span><span id="ct">Looking for mail…</span></div><div id="ts" role="status" aria-live="polite"></div><button id="rv" class="pri">Review queue</button><div class="ht" id="ht">click the canvas to capture the mouse · click fires · 1/2 switch weapon · WASD · Space auto-walk · click the map · demo data</div></div>
 </div>
-<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map"></canvas><div class="bighint">Full map · <span id="bigst"></span> · click or press Esc to close</div></div>
+<div id="bigwrap" hidden="hidden"><canvas id="big" width="480" height="480" aria-label="Fullscreen office map — move with WASD or arrows"></canvas><div class="bighint">Full map · <span id="bigst"></span> · WASD or arrows to move · click or press Esc to close</div></div>
 <div id="finwrap" hidden="hidden"><div id="fin" role="status"><h2>Inbox clear 🎉</h2><p id="finst"></p><div class="row"><button id="finok">Keep walking</button><button id="finrv" class="pri">Review queue</button></div></div></div>
 <dialog id="dg">
 <h2>Move <span id="dn"></span> messages to Trash?</h2>
@@ -996,6 +996,7 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     vt = 0;
     aw = 0;
     wx = 0;
+    mapMode = 0;
     path = null;
     followI = 0;
     stuckT = 0;
@@ -1436,6 +1437,12 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     hit(x, y, r) {
       return this.world.wall(Math.floor(x - r), Math.floor(y - r)) || this.world.wall(Math.floor(x + r), Math.floor(y - r)) || this.world.wall(Math.floor(x - r), Math.floor(y + r)) || this.world.wall(Math.floor(x + r), Math.floor(y + r));
     }
+    step(x, y) {
+      if (!this.hit(x, this.py, 0.3))
+        this.px = x;
+      if (!this.hit(this.px, y, 0.3))
+        this.py = y;
+    }
     planAuto() {
       const PW = 128, x0 = Math.floor(this.px) - 64, y0 = Math.floor(this.py) - 64;
       const walk = (x, y) => !this.world.wall(x0 + x, y0 + y);
@@ -1608,6 +1615,8 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       let tr = (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0) + clq(this.wx / 120);
       if (this.aw && (f || tr))
         this.setAuto(false);
+      if (this.aw && this.mapMode)
+        this.setAuto(false);
       if (this.aw) {
         let direct = this.validateHunt();
         if (!direct) {
@@ -1675,16 +1684,26 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       f = Math.max(-1, Math.min(1, f));
       tr = Math.max(-1, Math.min(1, tr));
       const k = Math.min(1, dt * 9);
-      this.vf += (f - this.vf) * k;
-      this.vt += (tr - this.vt) * k;
-      this.ang += this.vt * dt * (+SET.turn || 2.4);
-      const nx = this.px + Math.cos(this.ang) * this.vf * (+SET.move || 10) * dt;
-      const ny = this.py + Math.sin(this.ang) * this.vf * (+SET.move || 10) * dt;
       const ox = this.px, oy = this.py;
-      if (!this.hit(nx, this.py, 0.3))
-        this.px = nx;
-      if (!this.hit(this.px, ny, 0.3))
-        this.py = ny;
+      if (this.mapMode) {
+        const ix = (K.d || K.arrowright ? 1 : 0) - (K.a || K.arrowleft ? 1 : 0);
+        const iy = (K.s || K.arrowdown ? 1 : 0) - (K.w || K.arrowup ? 1 : 0);
+        if (ix || iy) {
+          const il = Math.hypot(ix, iy), isp = (+SET.move || 10) * dt;
+          this.step(ox + ix / il * isp, oy);
+          this.step(this.px, oy + iy / il * isp);
+        }
+        this.vf += (0 - this.vf) * k;
+        this.vt += (0 - this.vt) * k;
+      } else {
+        this.vf += (f - this.vf) * k;
+        this.vt += (tr - this.vt) * k;
+        this.ang += this.vt * dt * (+SET.turn || 2.4);
+        const nx = this.px + Math.cos(this.ang) * this.vf * (+SET.move || 10) * dt;
+        const ny = this.py + Math.sin(this.ang) * this.vf * (+SET.move || 10) * dt;
+        this.step(nx, this.py);
+        this.step(this.px, ny);
+      }
       const mdx = this.px - ox, mdy = this.py - oy, md = mdx * mdx + mdy * mdy;
       if (md > 0.000000001) {
         if (this.startT === null)
@@ -2290,6 +2309,32 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     if (st)
       st.textContent = bigStatus();
   }
+  var pvW = 0;
+  var pvH = 0;
+  var pvZb = new Float32Array(0);
+  var pvImg = null;
+  function drawMiniReal(ms) {
+    const MW = 148, MH = Math.max(80, Math.round(148 * Hh / Math.max(1, W)));
+    if (mm.width !== MW || mm.height !== MH) {
+      mm.width = MW;
+      mm.height = MH;
+      pvW = 0;
+    }
+    if (pvW !== MW || pvH !== MH || !pvImg) {
+      pvW = MW;
+      pvH = MH;
+      pvZb = new Float32Array(MW);
+      pvImg = mx.createImageData(MW, MH);
+    }
+    draw(mx, { W: MW, Hh: MH, zb: pvZb, img: pvImg }, game, world, ms / 1000);
+  }
+  var HINT_REAL = "click the canvas to capture the mouse · click fires · 1/2 switch weapon · WASD · Space auto-walk · click the map · demo data";
+  var HINT_MAP = "WASD or arrows to move on the map · click the mini view or press M for the real view";
+  function hint() {
+    const el = $2("ht");
+    if (el)
+      el.textContent = bigwrap.hidden ? HINT_REAL : HINT_MAP;
+  }
   function releaseMouse() {
     try {
       if (document.pointerLockElement === cv)
@@ -2298,6 +2343,10 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
   }
   function setBig(on) {
     bigwrap.hidden = !on;
+    game.mapMode = on ? 1 : 0;
+    if (on)
+      game.setAuto(false);
+    hint();
     if (on) {
       releaseMouse();
       try {
@@ -2385,6 +2434,10 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
       game.setAuto(!game.aw);
       return;
     }
+    if (k === "m") {
+      setBig(bigwrap.hidden);
+      return;
+    }
     if (k === "1") {
       game.weapon = "stamp";
       return;
@@ -2423,7 +2476,10 @@ input{width:100%;box-sizing:border-box;height:44px;margin:8px 0 16px;padding:0 1
     }
     if (ms - mmT > 120) {
       mmT = ms;
-      drawMap(mx, mm, game, world);
+      if (bigwrap.hidden)
+        drawMap(mx, mm, game, world);
+      else
+        drawMiniReal(ms);
       try {
         const near = game.nearestMail(70);
         game.guide = near;
